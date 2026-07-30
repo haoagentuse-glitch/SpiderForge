@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# 只有訓練／校準離線 topic artifact 才需要；正式 Gemini pipeline 不安裝。
+scikit-learn>=1.5
+sentence-transformers>=3.0

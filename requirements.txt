@@ -1,0 +1,16 @@
+# Spider Forge 執行控制面依賴（獨立於 backend 與 crawler runtime）。
+# 安裝：cd workspace\backend
+#       uv pip install --python ..\.venv\Scripts\python.exe -r app\spider_forge_system\requirements.txt
+# 測試請改裝 requirements-test.txt，避免把測試工具混入正式環境。
+
+playwright>=1.40
+langgraph>=1.2
+pyyaml>=6.0
+numpy>=1.26
+requests>=2.32
+scrapy>=2.17,<3
+scrapy-playwright>=0.0.48
+tzdata>=2025.2
+
+# Ollama 由 clients/judge.py 與可選的 shared/topic.py 透過 HTTP 呼叫，
+# 不需要安裝 Ollama Python SDK；本機或服務容器需另外啟動 Ollama。

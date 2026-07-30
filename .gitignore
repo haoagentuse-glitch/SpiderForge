@@ -1,0 +1,11 @@
+# 執行期產物不進版控；新版本一律集中到 runtime/ 或 SPIDERFORGE_DATA_DIR。
+runtime/
+**/__pycache__/
+*.pyc
+
+# 虛擬環境與金鑰（絕不進版控）
+.venv/
+venv/
+.env
+*.env
+!.env.example
