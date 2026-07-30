@@ -9,7 +9,7 @@ from ..config import FINAL_REPAIR_PROVIDER, REPAIR_PROVIDER
 from ..state import SpiderForgeState, normalize_failure_class
 from .generation import _contract, _safe_generate
 from .materials import compile_generation_materials
-from .prompts import _DIAGNOSE_SCHEMA
+from ..schemas import DIAGNOSE_SCHEMA
 
 _PROVIDER_RETRY_MAX = 2
 # 付費牆狀態碼在 crawl log 的確定性訊號；單純 401/403 是灰色登入牆（D2 照樣試），
@@ -194,7 +194,7 @@ def diagnose_failure(state: SpiderForgeState) -> dict:
         f"stdout：{test.get('stdout_tail', '')[-800:]}"
     )
     if result is None:
-        result = dict(judge(system=system, user=user, schema=_DIAGNOSE_SCHEMA))
+        result = dict(judge(system=system, user=user, schema=DIAGNOSE_SCHEMA))
         # 診斷模型不吐 failure_class；由確定性訊號補上路由用的可修復類別。
         result.setdefault("failure_class", _repairable_failure_class(error_text, result))
     else:

@@ -5,23 +5,6 @@
 
 from __future__ import annotations
 
-DEFAULT_TARGET_SCHEMA = {
-    "fields": {
-        "title": {"type": "string", "required": True},
-        "url": {"type": "url", "required": True},
-        "content": {
-            "type": "string",
-            "required": True,
-            "mode": "faithful_excerpt",
-            "max_chars": 6000,
-        },
-        "published_at": {"type": "iso8601_tz", "required": True},
-        "source_record_id": {"type": "string", "required": False},
-    },
-    "source_type": "media",
-    "content_scope": "summary_only",
-}
-
 CODE_SYSTEM = (
     "你是資深 Scrapy 工程師。只輸出單一 Python 檔的完整程式碼（放在 ```python 圍欄內），"
     "不要解說、不要 selector 猜測清單、不要要求使用者補 HAR。只能依 EvidencePack 實作。"
@@ -62,25 +45,3 @@ _SPIDER_CONTRACT = """【硬性契約】
 10. permalink 的 path 大小寫、連字號與 query parameter 名稱必須逐字沿用
     EvidencePack 的 observed detail URL；禁止把 ?a= 改成 ?b= 或自行改寫 URL 形式。
 11. 日期補 IANA 時區時使用 Python 標準庫 zoneinfo.ZoneInfo；不要為此新增 pytz 依賴。"""
-
-_STRATEGY_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "strategy": {"type": "string", "enum": ["api", "dom", "hybrid"]},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-        "reason": {"type": "string"},
-        "chosen_api": {"type": "string"},
-    },
-    "required": ["strategy", "confidence", "reason"],
-}
-
-_DIAGNOSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "failure_type": {"type": "string"},
-        "evidence": {"type": "string"},
-        "suggested_fix": {"type": "string"},
-        "error_signature": {"type": "string"},
-    },
-    "required": ["failure_type", "suggested_fix", "error_signature"],
-}

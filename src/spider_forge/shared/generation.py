@@ -10,7 +10,8 @@ from ..config import GENERATION_PROVIDER
 from ..state import SpiderForgeState
 from .evidence import _discover_detail_urls, _is_replayable_article_api
 from .materials import compile_generation_materials
-from .prompts import CODE_SYSTEM, _SPIDER_CONTRACT, _STRATEGY_SCHEMA
+from ..schemas import STRATEGY_SCHEMA
+from .prompts import CODE_SYSTEM, _SPIDER_CONTRACT
 
 _FORBIDDEN_PAGECOUNT_OVERRIDE = re.compile(
     r"""(?m)^[ \t]*["']CLOSESPIDER_PAGECOUNT["'][ \t]*:[^\r\n]*(?:\r?\n|$)"""
@@ -104,7 +105,7 @@ def strategy_decision(state: SpiderForgeState) -> dict:
         f"{json.dumps(discovered_article_links, ensure_ascii=False)[:3500]}\n"
         f"ARIA：{(report.get('aria_snapshot') or '')[:1500]}"
     )
-    result = judge(system=system, user=user, schema=_STRATEGY_SCHEMA)
+    result = judge(system=system, user=user, schema=STRATEGY_SCHEMA)
     if viable_candidates:
         strongest = viable_candidates[0]
         content_contract = (

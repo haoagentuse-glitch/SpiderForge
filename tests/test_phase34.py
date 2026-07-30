@@ -13,7 +13,7 @@ from spider_forge.clients import browser, coder, judge
 from spider_forge.output import artifacts
 from spider_forge.runs import ledger
 from spider_forge.shared import evidence, generation, repair
-from spider_forge.shared.prompts import DEFAULT_TARGET_SCHEMA
+from spider_forge.schemas import DEFAULT_TARGET_SCHEMA
 
 batch = importlib.import_module("spider_forge.runs.batch")
 

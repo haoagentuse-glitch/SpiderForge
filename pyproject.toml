@@ -16,6 +16,7 @@ dependencies = [
     "scrapy>=2.17,<3",
     "scrapy-playwright>=0.0.48",
     "tzdata>=2025.2",
+    "pydantic>=2",
 ]
 
 [project.optional-dependencies]

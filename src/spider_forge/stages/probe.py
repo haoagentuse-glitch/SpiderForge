@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from ..state import SpiderForgeState
 from ..shared import evidence as evidence_tools
 from ..shared.topic import normalize_config
-from ..shared.prompts import DEFAULT_TARGET_SCHEMA
+from ..schemas import DEFAULT_TARGET_SCHEMA
 
 def _safe_prefix(host: str) -> str:
     value = re.sub(r"[^a-z0-9]+", "_", host.lower()).strip("_")
