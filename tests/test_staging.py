@@ -2,7 +2,7 @@
 
 核心不變式：任何候選失敗都不得改變 active spider 的 hash。
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_staging
+    python -m spider_forge.tests.test_staging
 """
 
 from __future__ import annotations
@@ -13,11 +13,11 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 
-from app.spider_forge_system.output import artifacts
-from app.spider_forge_system.output.manager import persist_spider
-from app.spider_forge_system.stages.validate import validate_output
-from app.spider_forge_system.shared.sandbox import run_candidate
-from app.spider_forge_system.output.artifacts import (
+from spider_forge.output import artifacts
+from spider_forge.output.manager import persist_spider
+from spider_forge.stages.validate import validate_output
+from spider_forge.shared.sandbox import run_candidate
+from spider_forge.output.artifacts import (
     active_path,
     file_hash,
     promote,

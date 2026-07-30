@@ -9,3 +9,8 @@ venv/
 .env
 *.env
 !.env.example
+
+# Python 打包產物
+*.egg-info/
+build/
+dist/

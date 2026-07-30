@@ -7,7 +7,7 @@
 - 其餘可修復類 → 照原 retry_count 修復迴圈；分類結果進 diagnosis/failure_class 供死信記錄。
 
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_failure_taxonomy
+    python -m spider_forge.tests.test_failure_taxonomy
 """
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.spider_forge_system import pipeline as graph
+from spider_forge import pipeline as graph
 
 
 def _no_judge():
     """讓 judge 一被呼叫就爆，用來證明確定性/短路路徑沒有動用診斷模型。"""
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     original = judge_client.judge
     judge_client.judge = lambda **kwargs: (_ for _ in ()).throw(
@@ -125,7 +125,7 @@ def t_live_paywall_402_classifies_policy_kill_without_llm():
 
 def t_bare_401_403_is_not_policy_kill():
     """灰色登入牆（401/403）不是付費牆——D2 規定照樣試，不可被判 policy_kill。"""
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     original = judge_client.judge
     judge_client.judge = lambda **kwargs: {
@@ -187,7 +187,7 @@ def t_known_code_error_carries_class_and_still_repairs():
 
 
 def t_repairable_default_selector_schema_from_judge():
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     original = judge_client.judge
     judge_client.judge = lambda **kwargs: {

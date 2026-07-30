@@ -9,8 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from app.spider_forge_system.shared import topic as topic_gate
-from app.spider_forge_system.clients import topic as gemini_topic_client
+from spider_forge.shared import topic as topic_gate
+from spider_forge.clients import topic as gemini_topic_client
 
 
 def _artifact(*, ready=True):

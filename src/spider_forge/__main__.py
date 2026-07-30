@@ -1,4 +1,4 @@
-"""``python -m app.spider_forge_system`` 的標準入口。"""
+"""``python -m spider_forge`` 的標準入口。"""
 
 from .cli import main
 

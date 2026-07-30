@@ -4,14 +4,14 @@
 而不是一坨原始 log 要它猜。
 
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_repair_feedback
+    python -m spider_forge.tests.test_repair_feedback
 """
 
 from __future__ import annotations
 
-from app.spider_forge_system import pipeline as graph
-from app.spider_forge_system.shared import repair as repair_stage
-from app.spider_forge_system.shared.prompts import DEFAULT_TARGET_SCHEMA
+from spider_forge import pipeline as graph
+from spider_forge.shared import repair as repair_stage
+from spider_forge.shared.prompts import DEFAULT_TARGET_SCHEMA
 
 
 def t_stage_crawl_did_not_finish_flags_transport():

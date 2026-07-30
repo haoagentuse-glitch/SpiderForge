@@ -1,14 +1,14 @@
 """spec v2 §2：EvidencePack 補三缺口——翻頁機制、published_at 格式/時區、可重播 headers。
 
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_evidence_gaps
+    python -m spider_forge.tests.test_evidence_gaps
 """
 
 from __future__ import annotations
 
-from app.spider_forge_system import pipeline as graph
-from app.spider_forge_system.shared import evidence as evidence_stage
-from app.spider_forge_system.shared.prompts import DEFAULT_TARGET_SCHEMA
+from spider_forge import pipeline as graph
+from spider_forge.shared import evidence as evidence_stage
+from spider_forge.shared.prompts import DEFAULT_TARGET_SCHEMA
 
 
 # ════════════════════════ published_at 格式/時區分類 ════════════════════════

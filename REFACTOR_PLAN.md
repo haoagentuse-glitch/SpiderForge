@@ -36,9 +36,12 @@ spider_forge/                    repo 根
 ├── src/spider_forge/            ① 函式庫本身（可重用積木）
 │   ├── clients/                 client 工廠：base.py(LLMClient) + registry.py
 │   ├── schemas/                 pydantic 集中：outputs.py(資料形狀) + state.py(共享狀態)
+│   │                              + strategy/diagnose 等 LLM output schema
+│   ├── prompts/                 每個「呼叫 LLM 的節點」一個 prompt 檔（generate.py/
+│   │                              strategy.py/diagnose.py/topic.py），node 由 __init__ 注入
 │   ├── nodes/                   ★ 節點積木庫 ★ base.py(Node 基類) + recon.py/triage.py/...
-│   │                              → 加新節點 = 這裡多放一個檔
-│   ├── shared/                  節點共用 helper（parsers/prompts/quality_rules… 非節點）
+│   │                              → 加新節點 = 這裡多放一個檔（用 LLM 的再配一個 prompts/ 檔）
+│   ├── shared/                  節點共用 helper（parsers/quality_rules… 非節點、非 prompt）
 │   ├── pipeline.py              管線：把積木拼成流程（add_node/add_edge/route）
 │   ├── cli.py  __main__.py      入口
 │   └── config.py
@@ -69,12 +72,13 @@ spider_forge/                    repo 根
 
 ### 階段 1 — 獨立化套件 + 綠基準（本次真正的地基）
 **為什麼先做**：146 個測試全寫 `from app.spider_forge_system import ...`，但這是從母專案複製出的獨立副本、沒有 `app/` 母佈局，**現在無法獨立測試**。沒綠基準，後面 class 化無從驗證對錯。這一步同時完成「脫離特定專案 → 通用套件」的第一塊地基。
-- [ ] 1.1 建 `pyproject.toml`（src layout，套件名 `spider_forge`，依賴引 requirements）
-- [ ] 1.2 `git mv` 套件內容進 `src/spider_forge/`（tests/ 留根）
-- [ ] 1.3 批次替換 `app.spider_forge_system` → `spider_forge`（94 處/21 檔，主要 tests/）
-- [ ] 1.4 `config.py`：runtime 資料根改為 repo 根，避免搬套件後找不到既有 `runtime/`
-- [ ] 1.5 `pip install -e .`；跑 `pytest`，**記錄綠基準數字**（寫進 commit）
-- [ ] 1.6 commit：`refactor: 階段1 獨立化套件 + 綠基準`
+- [x] 1.1 建 `pyproject.toml`（src layout，套件名 `spider_forge`，依賴引 requirements）
+- [x] 1.2 `git mv` 套件內容進 `src/spider_forge/`（tests/ 留根）
+- [x] 1.3 批次替換 `app.spider_forge_system` → `spider_forge`（94 處/21 檔全清）
+- [x] 1.4 `config.py`：runtime 資料根改為 repo 根（`REPO_ROOT`），`paths` 已驗證指向 repo 根 runtime/
+- [x] 1.5 `pip install -e .`；**綠基準 = 138 passed, 1 skipped**（skip=依賴外部 crawler_runtime 的 fixture runner 子程序，待階段6 解耦）
+      另修 `test_architecture` 的 `PACKAGE_DIR`（改指 src/spider_forge）以反映新結構
+- [x] 1.6 commit：`refactor: 階段1 獨立化套件 + 綠基準`
 
 ### 階段 2 — client 層（統一工廠 + load_dotenv）
 - [ ] 2.1 `clients/base.py`：`LLMClient` dataclass（api_key/model/base_url + `complete()`）
@@ -83,12 +87,16 @@ spider_forge/                    repo 根
 - [ ] 2.4 驗收：`pytest` 維持綠；`get_client("gemini")` 能取得可用 client（最小實跑）
 - [ ] 2.5 commit：`refactor: 階段2 統一 client 工廠`
 
-### 階段 3 — schema 層（pydantic 集中）
-- [ ] 3.1 `schemas/outputs.py`：pydantic `Article`（title/url/content/published_at/source_type…）取代 `DEFAULT_TARGET_SCHEMA`
-- [ ] 3.2 `schemas/state.py`：集中 `SpiderForgeState`（可保留 TypedDict 或轉 pydantic）
-- [ ] 3.3 散在 topic.py/page.py 的 response schema 收斂引用同一來源
-- [ ] 3.4 驗收：`pytest` 維持綠；改 schema 一個欄位只需動一個檔
-- [ ] 3.5 commit：`refactor: 階段3 pydantic 集中 schema`
+### 階段 3 — schema 層 + prompt 層（拆解 `shared/prompts.py` 這個雜燴）
+`shared/prompts.py` 現在混了 prompt 文字（`CODE_SYSTEM`/`_SPIDER_CONTRACT`，屬 generate）與
+schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿兩條軸拆乾淨後這檔消失。
+- [ ] 3.1 `schemas/outputs.py`：pydantic `Article`（title/url/content/published_at/source_record_id）取代 `DEFAULT_TARGET_SCHEMA`
+- [ ] 3.2 `schemas/state.py`：集中 `SpiderForgeState`（可保留 TypedDict 或轉 pydantic）；strategy/diagnose 的 output schema 也收進 schemas/
+- [ ] 3.3 `prompts/`：`CODE_SYSTEM`+`_SPIDER_CONTRACT`→`prompts/generate.py`；strategy/diagnose/topic 的指令文字各成一檔；散在 topic.py/page.py 的 Gemini 領域 prompt 一併搬入
+- [ ] 3.4 驗收：`pytest` 維持綠；改 schema 一個欄位、或改一個 prompt，都只動一個檔
+- [ ] 3.5 commit：`refactor: 階段3 拆 schema(pydantic) + prompt(按節點)`
+
+> 領域槓桿：台灣財經/政策的綁定主要藏在 topic prompt 裡。prompt 拆出可注入後，「換領域＝換一個 prompt 檔」，等於順手做掉階段 6 一大半。
 
 ### 階段 4 — Node 基類 + 一個節點 class 化（驗證模式）
 - [ ] 4.1 `nodes/base.py`：`Node` 基類（`__call__` 抽象）

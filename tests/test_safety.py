@@ -1,7 +1,7 @@
 """P0-3 / P0-5 回歸：沙盒不繼承 secrets、token usage 每站正確歸屬。
 
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_safety
+    python -m spider_forge.tests.test_safety
 """
 
 from __future__ import annotations
@@ -11,11 +11,11 @@ import os
 import tempfile
 from pathlib import Path
 
-from app.spider_forge_system.clients import coder as coder_client
-from app.spider_forge_system.shared import sandbox as runner_module
-from app.spider_forge_system.shared.sandbox import sandbox_env
+from spider_forge.clients import coder as coder_client
+from spider_forge.shared import sandbox as runner_module
+from spider_forge.shared.sandbox import sandbox_env
 
-batch_module = importlib.import_module("app.spider_forge_system.runs.batch")
+batch_module = importlib.import_module("spider_forge.runs.batch")
 
 _SECRET_KEYS = ("DATABASE_URL", "DEEPSEEK_API", "KIMI_API", "OLLAMA_HOST",
                 "LLM_API_KEY", "POSTGRES_PASSWORD", "FINMIND_TOKEN")

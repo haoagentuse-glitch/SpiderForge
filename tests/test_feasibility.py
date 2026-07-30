@@ -1,7 +1,7 @@
 """spec v2 §3.2/§3.6：feasibility_triage 確定性分流 + escalate_human 非阻塞死信歸檔。
 
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_feasibility
+    python -m spider_forge.tests.test_feasibility
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import json
 import time
 from pathlib import Path
 
-from app.spider_forge_system import pipeline as graph
+from spider_forge import pipeline as graph
 
 
 def _cleanup(path_str: str | None) -> None:

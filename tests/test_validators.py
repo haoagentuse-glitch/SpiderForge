@@ -1,7 +1,7 @@
 """P0-A 驗收：validator 必須消滅已知假成功（remediation brief §6 P0-A、§8）。
 
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_validators
+    python -m spider_forge.tests.test_validators
 全部離線、用固定 fixture，不碰網路。
 """
 
@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from app.spider_forge_system.shared.quality_rules import validate_items
+from spider_forge.shared.quality_rules import validate_items
 
 _FIX = Path(__file__).parent / "fixtures"
 _TW = timezone(timedelta(hours=8))

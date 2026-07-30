@@ -6,13 +6,13 @@
 - 硬界線：只有單一固定 UA（非 UA 池），不做代理/指紋/CAPTCHA。
 
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_request_identity
+    python -m spider_forge.tests.test_request_identity
 """
 
 from __future__ import annotations
 
-from app.spider_forge_system.shared import request_identity
-from app.spider_forge_system.shared.prompts import _SPIDER_CONTRACT
+from spider_forge.shared import request_identity
+from spider_forge.shared.prompts import _SPIDER_CONTRACT
 
 def t_browser_headers_are_real_and_honest():
     headers = request_identity.browser_request_headers()
@@ -49,7 +49,7 @@ def t_single_fixed_ua_not_a_pool():
 
 
 def t_fetch_sample_sends_browser_identity():
-    import app.spider_forge_system.shared.evidence as evidence
+    import spider_forge.shared.evidence as evidence
     import requests
 
     captured = {}

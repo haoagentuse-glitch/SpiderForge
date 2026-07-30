@@ -6,13 +6,15 @@ import json
 import tempfile
 from pathlib import Path
 
-from app.spider_forge_system import pipeline
-from app.spider_forge_system.shared import repair
-from app.spider_forge_system.shared.fixture import build_fixture_spec
-from app.spider_forge_system.shared.materials import (
+import pytest
+
+from spider_forge import pipeline
+from spider_forge.shared import repair
+from spider_forge.shared.fixture import build_fixture_spec
+from spider_forge.shared.materials import (
     compile_generation_materials,
 )
-from app.spider_forge_system.shared.sandbox import run_fixture_candidate
+from spider_forge.shared.sandbox import run_fixture_candidate
 
 
 def t_material_compiler_removes_dom_noise_and_unselected_sources():
@@ -161,6 +163,12 @@ def _fixture() -> dict:
 
 
 def t_fixture_runner_executes_candidate_in_crawler_subprocess():
+    crawler_runtime = Path(__file__).resolve().parents[1] / "crawler_runtime"
+    if not crawler_runtime.is_dir():
+        pytest.skip(
+            "需要外部 crawler_runtime（news_crawler.fixture_runner 子程序）；"
+            "獨立副本中不存在，待階段6 解耦"
+        )
     with tempfile.TemporaryDirectory() as temp_dir:
         candidate = Path(temp_dir) / "candidate.py"
         candidate.write_text(_GOOD_CANDIDATE, encoding="utf-8")

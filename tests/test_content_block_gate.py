@@ -6,7 +6,7 @@
 - 主題整批漂走且結構有過 → wrong_section（沿用主題閘門既有 Gemini 輸出，不另呼叫）。
 
 跑法（從 workspace/backend/）：
-    python -m app.spider_forge_system.tests.test_content_block_gate
+    python -m spider_forge.tests.test_content_block_gate
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from app.spider_forge_system import pipeline as graph
-from app.spider_forge_system.shared import repair as repair_stage
-from app.spider_forge_system.stages import validate as validate_stage
+from spider_forge import pipeline as graph
+from spider_forge.shared import repair as repair_stage
+from spider_forge.stages import validate as validate_stage
 
 
 _REAL = "台股今日收紅，權值股領漲，法人買超金額創近月新高，市場觀望聯準會利率決策。"
@@ -171,7 +171,7 @@ def t_diagnose_block_page_is_repairable_not_kill():
 
 
 def t_wrong_section_from_topic_drift():
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     original = judge_client.judge
     judge_client.judge = lambda **kwargs: {
@@ -243,7 +243,7 @@ def t_graph_wires_block_gate_between_sandbox_and_validate():
 
 
 def t_gemini_page_client_parses_structured_verdict():
-    from app.spider_forge_system.clients import page as gemini_page_client
+    from spider_forge.clients import page as gemini_page_client
 
     class FakeResp:
         status_code = 200

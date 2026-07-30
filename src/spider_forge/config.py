@@ -7,9 +7,10 @@ import re
 from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = PACKAGE_DIR.parents[1]  # src/spider_forge → src → repo 根
 SITE_QUEUE_PATH = PACKAGE_DIR / "site_queue.yaml"
 DATA_DIR = Path(
-    os.environ.get("SPIDERFORGE_DATA_DIR", str(PACKAGE_DIR / "runtime"))
+    os.environ.get("SPIDERFORGE_DATA_DIR", str(REPO_ROOT / "runtime"))
 ).expanduser().resolve()
 
 REQUESTS_DIR = DATA_DIR / "requests"

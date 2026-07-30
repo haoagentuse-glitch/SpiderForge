@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spider_forge"
+version = "0.1.0"
+description = "AI 自動產 Scrapy 爬蟲的工廠（模組化、積木化 pipeline）"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright>=1.40",
+    "langgraph>=1.2",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "requests>=2.32",
+    "scrapy>=2.17,<3",
+    "scrapy-playwright>=0.0.48",
+    "tzdata>=2025.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.4,<9"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+spider_forge = ["site_queue.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

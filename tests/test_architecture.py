@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-PACKAGE_DIR = Path(__file__).resolve().parents[1]
+PACKAGE_DIR = Path(__file__).resolve().parents[1] / "src" / "spider_forge"
 STAGES_DIR = PACKAGE_DIR / "stages"
 ROOT_PYTHON_FILES = {
     "__init__.py",
@@ -29,7 +29,7 @@ def t_stages_do_not_import_other_stages():
                 continue
             module = node.module or ""
             if node.level == 1 or module.startswith(
-                "app.spider_forge_system.stages"
+                "spider_forge.stages"
             ):
                 violations.append(f"{path.name}:{node.lineno}:{module}")
     return not violations, f"violations={violations}"

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.spider_forge_system import pipeline as graph
-from app.spider_forge_system.shared import evidence as evidence_stage
-from app.spider_forge_system.shared.prompts import DEFAULT_TARGET_SCHEMA
+from spider_forge import pipeline as graph
+from spider_forge.shared import evidence as evidence_stage
+from spider_forge.shared.prompts import DEFAULT_TARGET_SCHEMA
 
 
 def t_minimal_request_gets_operational_defaults():
@@ -66,7 +66,7 @@ def t_prompt_safe_request_excludes_access_secret():
 
 
 def t_recon_redacts_access_context_ref_from_errors():
-    from app.spider_forge_system.clients import browser as browser_probe
+    from spider_forge.clients import browser as browser_probe
 
     secret_path = "C:/secret/browser-state.json"
     original_probe = browser_probe.probe
@@ -145,7 +145,7 @@ def t_evidence_pack_is_internal_and_concrete():
 
 
 def t_recon_keeps_plain_http_path_when_browser_is_blocked():
-    from app.spider_forge_system.clients import browser as browser_probe
+    from spider_forge.clients import browser as browser_probe
 
     original_probe = browser_probe.probe
     original_fetch = evidence_stage._fetch_sample
@@ -187,7 +187,7 @@ def t_recon_keeps_plain_http_path_when_browser_is_blocked():
 
 
 def t_recon_marks_browser_required_when_plain_http_is_blocked():
-    from app.spider_forge_system.clients import browser as browser_probe
+    from spider_forge.clients import browser as browser_probe
 
     original_probe = browser_probe.probe
     original_fetch = evidence_stage._fetch_sample
@@ -391,7 +391,7 @@ def t_evidence_uses_browser_dom_when_plain_http_is_blocked():
 
 
 def t_strategy_rejects_api_without_replayable_article_evidence():
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     original = judge_client.judge
     judge_client.judge = lambda **kwargs: {
@@ -430,7 +430,7 @@ def t_strategy_rejects_api_without_replayable_article_evidence():
 
 
 def t_strategy_prefers_replayable_structured_evidence_over_qwen_guess():
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     original = judge_client.judge
     judge_client.judge = lambda **kwargs: {
@@ -474,7 +474,7 @@ def t_strategy_prefers_replayable_structured_evidence_over_qwen_guess():
 
 
 def t_strategy_uses_best_matching_feed_and_fetches_full_detail():
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     correct = "https://example.com/feed/?content_type=press-releases"
     unrelated = "https://example.com/feed/?content_type=regulatory-news"
@@ -539,7 +539,7 @@ def t_strategy_uses_best_matching_feed_and_fetches_full_detail():
 
 
 def t_strategy_uses_deterministic_html_when_links_prove_only_route():
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     original = judge_client.judge
     judge_client.judge = lambda **kwargs: (_ for _ in ()).throw(
@@ -587,7 +587,7 @@ def t_strategy_uses_deterministic_html_when_links_prove_only_route():
 
 
 def t_recon_redacts_secrets_and_counts_article_json():
-    from app.spider_forge_system.clients import browser as browser_probe
+    from spider_forge.clients import browser as browser_probe
 
     safe = browser_probe._safe_post_data(
         '{"query":"news","csrfToken":"do-not-leak","nested":{"api_key":"secret"}}'
@@ -764,7 +764,7 @@ def t_two_repairs_then_escalate():
 
 
 def t_known_scrapy_api_error_is_diagnosed_without_llm():
-    from app.spider_forge_system.clients import judge as judge_client
+    from spider_forge.clients import judge as judge_client
 
     original = judge_client.judge
     judge_client.judge = lambda **kwargs: (_ for _ in ()).throw(
