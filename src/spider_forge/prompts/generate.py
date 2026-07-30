@@ -1,6 +1,8 @@
-"""模型提示與資料結構常數。
+"""generate_spider 節點的 prompt：產 Scrapy 爬蟲碼的系統指令與硬性契約。
 
-純字串／dict 常數，從原本 graph.py 逐字搬移，未改動任何內容。
+SPIDER_CONTRACT 用 .format() 填入 {source_prefix}/{site_name}/{source_type}/
+{content_scope}/{max_content_chars}（見 shared/generation.py）。改產碼指令只改這裡，
+不動 generation.py 的邏輯。
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ CODE_SYSTEM = (
     "程式碼保持精簡，最多 180 行；共用 headers 只定義一次，禁止長篇註解與重複 fallback。"
 )
 
-_SPIDER_CONTRACT = """【硬性契約】
+SPIDER_CONTRACT = """【硬性契約】
 1. 單一檔案、一個 scrapy.Spider 子類別；name/source_prefix 均為 "{source_prefix}"。
 2. allowed_domains 必須涵蓋實際請求 host；限速與最多 2 個列表分頁（低速由專案 AutoThrottle 維持）。
    constraints.max_pages 只限制列表翻頁請求，不是整支爬蟲的 response 數；

@@ -92,11 +92,11 @@ spider_forge/                    repo 根
 ### 階段 3 — schema 層 + prompt 層（拆解 `shared/prompts.py` 這個雜燴）
 `shared/prompts.py` 現在混了 prompt 文字（`CODE_SYSTEM`/`_SPIDER_CONTRACT`，屬 generate）與
 schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿兩條軸拆乾淨後這檔消失。
-- [ ] 3.1 `schemas/outputs.py`：pydantic `Article`（title/url/content/published_at/source_record_id）取代 `DEFAULT_TARGET_SCHEMA`
-- [ ] 3.2 `schemas/state.py`：集中 `SpiderForgeState`（可保留 TypedDict 或轉 pydantic）；strategy/diagnose 的 output schema 也收進 schemas/
-- [ ] 3.3 `prompts/`：`CODE_SYSTEM`+`_SPIDER_CONTRACT`→`prompts/generate.py`；strategy/diagnose/topic 的指令文字各成一檔；散在 topic.py/page.py 的 Gemini 領域 prompt 一併搬入
-- [ ] 3.4 驗收：`pytest` 維持綠；改 schema 一個欄位、或改一個 prompt，都只動一個檔
-- [ ] 3.5 commit：`refactor: 階段3 拆 schema(pydantic) + prompt(按節點)`
+- [x] 3.1 `schemas/outputs.py`：pydantic `Article` + `DEFAULT_TARGET_SCHEMA`（dict 契約保留、向下相容）
+- [x] 3.2 `schemas/llm_io.py`：strategy/diagnose output schema 收入。`SpiderForgeState` 留在套件根 `state.py`（核心執行狀態，搬動牽涉大量 import、收益有限，刻意不搬）
+- [x] 3.3 `prompts/generate.py`：`CODE_SYSTEM`+`SPIDER_CONTRACT` 搬出、`shared/prompts.py` 消失。strategy/diagnose/topic 的**內嵌** prompt 待階段6（它們正是領域綁定，與領域抽離一起搬）
+- [x] 3.4 驗收：pytest 138 passed/1 skipped（3a、3b 各驗）；Article 實例化 + prompts import 冒煙通過
+- [x] 3.5 commit：3a `326b888`（schema）+ 3b（prompt，本次）
 
 > 領域槓桿：台灣財經/政策的綁定主要藏在 topic prompt 裡。prompt 拆出可注入後，「換領域＝換一個 prompt 檔」，等於順手做掉階段 6 一大半。
 

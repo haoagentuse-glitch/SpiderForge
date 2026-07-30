@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from spider_forge.shared import request_identity
-from spider_forge.shared.prompts import _SPIDER_CONTRACT
+from spider_forge.prompts.generate import SPIDER_CONTRACT
 
 def t_browser_headers_are_real_and_honest():
     headers = request_identity.browser_request_headers()
@@ -80,7 +80,7 @@ def t_fetch_sample_sends_browser_identity():
 
 
 def t_generator_contract_forbids_bypassing_paywall_or_captcha():
-    contract = _SPIDER_CONTRACT
+    contract = SPIDER_CONTRACT
     ok = (
         "付費牆" in contract
         and "CAPTCHA" in contract

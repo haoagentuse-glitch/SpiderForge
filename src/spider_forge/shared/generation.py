@@ -11,7 +11,7 @@ from ..state import SpiderForgeState
 from .evidence import _discover_detail_urls, _is_replayable_article_api
 from .materials import compile_generation_materials
 from ..schemas import STRATEGY_SCHEMA
-from .prompts import CODE_SYSTEM, _SPIDER_CONTRACT
+from ..prompts.generate import CODE_SYSTEM, SPIDER_CONTRACT
 
 _FORBIDDEN_PAGECOUNT_OVERRIDE = re.compile(
     r"""(?m)^[ \t]*["']CLOSESPIDER_PAGECOUNT["'][ \t]*:[^\r\n]*(?:\r?\n|$)"""
@@ -191,7 +191,7 @@ def strategy_decision(state: SpiderForgeState) -> dict:
 
 def _contract(state: SpiderForgeState) -> str:
     schema = state["target_schema"]
-    return _SPIDER_CONTRACT.format(
+    return SPIDER_CONTRACT.format(
         source_prefix=state["source_prefix"],
         site_name=state["site_name"],
         source_type=schema.get("source_type", "media"),
