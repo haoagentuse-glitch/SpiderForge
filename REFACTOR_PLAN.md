@@ -81,11 +81,13 @@ spider_forge/                    repo 根
 - [x] 1.6 commit：`refactor: 階段1 獨立化套件 + 綠基準`
 
 ### 階段 2 — client 層（統一工廠 + load_dotenv）
-- [ ] 2.1 `clients/base.py`：`LLMClient` dataclass（api_key/model/base_url + `complete()`）
-- [ ] 2.2 `clients/registry.py`：`get_client(provider)` 集中 provider→(env, model, base_url) 表；`load_dotenv()` 只在此呼叫一次
-- [ ] 2.3 現有 `coder.py`/`topic.py`/`page.py` 改用統一工廠，刪掉兩份重複 `_load_env`
-- [ ] 2.4 驗收：`pytest` 維持綠；`get_client("gemini")` 能取得可用 client（最小實跑）
-- [ ] 2.5 commit：`refactor: 階段2 統一 client 工廠`
+- [x] 2.1 `clients/env.py`：唯一的 `load_env()`（合併兩份 `_load_env`，不加 python-dotenv 依賴，import 即載入一次）
+- [x] 2.2 `clients/registry.py`：`ProviderSpec` + `get_provider(provider)` 集中 deepseek/kimi/gemini 的 (env, model, base_url, api_style)；延遲求值反映 .env 與 monkeypatch
+- [x] 2.3 `coder.py`（刪 CoderConfig/_cfg/_load_env）/`topic.py`/`page.py` 改用統一 env + registry；保留各自 complete/classify 呼叫（Gemini 非 OpenAI 相容，不硬統一）
+- [x] 2.4 驗收：pytest 138 passed/1 skipped；registry 冒煙（三 provider 設定正確、未知 provider 報錯）
+- [x] 2.5 commit：`refactor: 階段2 統一 client 工廠（env + registry）`
+
+> 範圍判斷：`complete()` 未跨 OpenAI 相容(coder)與 Gemini(topic/page)硬統一——兩者 API 結構不同，硬統一風險高且非核心訴求。階段 2 只統一「設定取得 + env 載入」，這才是「乾淨初始化 + 設定集中」的本質。
 
 ### 階段 3 — schema 層 + prompt 層（拆解 `shared/prompts.py` 這個雜燴）
 `shared/prompts.py` 現在混了 prompt 文字（`CODE_SYSTEM`/`_SPIDER_CONTRACT`，屬 generate）與

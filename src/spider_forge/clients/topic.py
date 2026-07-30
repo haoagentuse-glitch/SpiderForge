@@ -10,38 +10,21 @@ from __future__ import annotations
 import json
 import os
 import time
-from pathlib import Path
 from typing import Callable
 
 import requests
 
-API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
-DEFAULT_MODEL = "gemini-3.5-flash-lite"
+from .env import load_env
+from .registry import get_provider
+
+_SPEC = get_provider("gemini")
+API_URL = _SPEC.base_url
+DEFAULT_MODEL = _SPEC.model
 TRANSIENT_HTTP = {429, 500, 502, 503, 504}
 
 
 class GeminiTopicError(RuntimeError):
     """Missing credentials, transport failure, or invalid structured output."""
-
-
-def _load_env() -> None:
-    """Load the nearest .env without adding a python-dotenv dependency."""
-    folders = [Path.cwd(), *Path.cwd().parents, *Path(__file__).resolve().parents]
-    seen: set[Path] = set()
-    for folder in folders:
-        if folder in seen:
-            continue
-        seen.add(folder)
-        env_file = folder / ".env"
-        if not env_file.is_file():
-            continue
-        for line in env_file.read_text(encoding="utf-8-sig").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
-        return
 
 
 def _response_schema(indices: list[int]) -> dict:
@@ -141,10 +124,10 @@ def classify_batch(
         for index, row in zip(indices, rows)
     ]
 
-    _load_env()
-    api_key = os.getenv("LLM_API_KEY")
+    load_env()
+    api_key = os.getenv(_SPEC.api_key_env)
     if not api_key:
-        raise GeminiTopicError("Gemini 金鑰缺漏（env LLM_API_KEY）")
+        raise GeminiTopicError(f"Gemini 金鑰缺漏（env {_SPEC.api_key_env}）")
 
     body = {
         "model": model,

@@ -14,15 +14,17 @@ from typing import Callable
 
 import requests
 
+from .env import load_env
+from .registry import get_provider
 from .topic import (
     API_URL,
     TRANSIENT_HTTP,
     GeminiTopicError,
     _extract_output_text,
-    _load_env,
 )
 
-DEFAULT_MODEL = "gemini-3.5-flash-lite"
+_SPEC = get_provider("gemini")
+DEFAULT_MODEL = _SPEC.model
 
 
 class GeminiPageError(GeminiTopicError):
@@ -66,10 +68,10 @@ def classify_page(
     if not leads:
         raise ValueError("classify_page 需要至少一筆非空 content_lead")
 
-    _load_env()
-    api_key = os.getenv("LLM_API_KEY")
+    load_env()
+    api_key = os.getenv(_SPEC.api_key_env)
     if not api_key:
-        raise GeminiPageError("Gemini 金鑰缺漏（env LLM_API_KEY）")
+        raise GeminiPageError(f"Gemini 金鑰缺漏（env {_SPEC.api_key_env}）")
 
     body = {
         "model": model,
