@@ -1,7 +1,0 @@
-# Spider Forge 測試環境。
-# 安裝：cd workspace\backend
-#       uv pip install --python ..\.venv\Scripts\python.exe -r app\spider_forge_system\requirements-test.txt
-
--r requirements.txt
-
-pytest>=8.4,<9

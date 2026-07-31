@@ -17,6 +17,9 @@ dependencies = [
     "scrapy-playwright>=0.0.48",
     "tzdata>=2025.2",
     "pydantic>=2",
+    "arize-phoenix-otel>=0.16.0",
+    "openinference-instrumentation-langchain",
+    "arize-phoenix-client",
 ]
 
 [project.optional-dependencies]

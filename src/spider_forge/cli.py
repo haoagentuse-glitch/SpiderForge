@@ -187,12 +187,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     batch = subparsers.add_parser(
         "batch",
-        help="執行 site_queue.yaml；可指定一個或多個 source_prefix",
+        help="執行站台清單（SPIDERFORGE_SITE_QUEUE）；可指定一個或多個 source_prefix",
     )
     batch.add_argument(
         "prefix",
         nargs="*",
-        help="site_queue.yaml 的 source_prefix；省略時執行全部",
+        help="站台清單裡的 source_prefix；省略時執行全部",
     )
     batch.add_argument(
         "--max-retries",

@@ -1,0 +1,27 @@
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: spider-forge-phoenix
+    restart: unless-stopped
+
+    ports:
+      - "6006:6006" # Web UI + OTLP HTTP
+      - "4317:4317" # OTLP gRPC
+
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+
+      # 本機使用可先關閉 UI telemetry
+      PHOENIX_TELEMETRY_ENABLED: "false"
+
+      # 暫時不使用 Phoenix MCP
+      PHOENIX_ENABLE_MCP_SERVER: "false"
+
+      # Trace 保留天數；0 代表無期限
+      PHOENIX_DEFAULT_RETENTION_POLICY_DAYS: "90"
+
+    volumes:
+      - phoenix_data:/mnt/data
+
+volumes:
+  phoenix_data:
