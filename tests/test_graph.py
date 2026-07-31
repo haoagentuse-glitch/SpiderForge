@@ -15,7 +15,7 @@ def t_minimal_request_gets_operational_defaults():
         and result["target_schema"]["fields"]["published_at"]["type"] == "iso8601_tz"
         and result["validation"]["allowed_domains"] == ["policy.example.com"]
         and result["validation"]["max_content_chars"] == 6000
-        and result["topic_gate"]["mode"] == "enforce"
+        and result["topic_gate"]["mode"] == "off"  # 通用預設不強制（階段5 領域抽離）
         and result["topic_gate"]["provider"] == "gemini"
         and result["max_retries"] == 2
         and result["constraints"]["max_pages"] == 2

@@ -31,7 +31,9 @@ FEATURE_VERSION = "title+content-first-50/v1"
 LABELS = ("finance", "public_policy")
 
 DEFAULT_CONFIG = {
-    "mode": "enforce",  # off | shadow | enforce
+    # 通用預設：off = 不開箱強制某領域主題過濾。想用財經/政策 gate 的人顯式傳
+    # topic_gate={"mode": "enforce", ...}（可用 SPIDERFORGE_TOPIC_MODE 覆蓋預設）。
+    "mode": os.getenv("SPIDERFORGE_TOPIC_MODE", "off"),  # off | shadow | enforce
     "provider": "gemini",  # gemini | artifact
     "gemini_model": "gemini-3.5-flash-lite",
     "gemini_batch_size": 20,
