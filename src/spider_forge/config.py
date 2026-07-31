@@ -8,7 +8,15 @@ from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_DIR.parents[1]  # src/spider_forge → src → repo 根
-SITE_QUEUE_PATH = PACKAGE_DIR / "site_queue.yaml"
+# 站台清單不再內建於套件：通用套件不該預先綁定某個領域的站點名單。
+# `examples/site_queue.taiwan-finance.yaml` 只是範例；自己的清單用
+# SPIDERFORGE_SITE_QUEUE 指向即可（格式見該範例檔）。
+SITE_QUEUE_PATH = Path(
+    os.environ.get(
+        "SPIDERFORGE_SITE_QUEUE",
+        str(REPO_ROOT / "examples" / "site_queue.taiwan-finance.yaml"),
+    )
+).expanduser()
 DATA_DIR = Path(
     os.environ.get("SPIDERFORGE_DATA_DIR", str(REPO_ROOT / "runtime"))
 ).expanduser().resolve()

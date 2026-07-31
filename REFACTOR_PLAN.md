@@ -119,7 +119,8 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 - [x] 5.3 `request_identity.py`：purpose / UA / Accept-Language 改 env 可覆蓋（預設值不變，
       保留「單一固定不輪替、不做指紋偽裝」的硬界線）。commit `e882635`
 - [~] 5.2 topic/strategy/diagnose 內嵌 prompt 搬進 `prompts/` — **降為可選**（理由見下）
-- [ ] 5.4 `site_queue.yaml` 台灣財經站清單 → 標為範例，不當核心預設（未做，低風險小事）
+- [x] 5.4 站清單移出套件：`src/spider_forge/site_queue.yaml` → `examples/site_queue.taiwan-finance.yaml`，
+      `SITE_QUEUE_PATH` 改讀 env `SPIDERFORGE_SITE_QUEUE`（缺檔給明確錯誤指示）；pyproject 移除 package-data
 - [x] 5.5 驗收：pytest 138 passed / 1 skipped
 
 > **決策（2026-07-31，指揮官判斷、使用者授權裁決）：LABELS/Gemini 領域可換 不做。**

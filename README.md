@@ -94,7 +94,6 @@ spider_forge_system/
 ├── pipeline.py
 ├── config.py
 ├── state.py
-├── site_queue.yaml
 ├── stages/
 │   ├── probe.py
 │   ├── triage.py
@@ -204,7 +203,8 @@ Ollama 不需要 Python SDK。`clients/judge.py` 透過 HTTP 呼叫本機 Ollama
 ../.venv/Scripts/python.exe -m app.spider_forge_system run --url "https://example.com/news" --max-retries 0
 ```
 
-執行 `site_queue.yaml` 全部來源，或只跑指定來源：
+執行站台清單全部來源，或只跑指定來源（清單預設讀 `examples/site_queue.taiwan-finance.yaml`，
+用 `SPIDERFORGE_SITE_QUEUE` 指向自己的 YAML）：
 
 ```console
 ../.venv/Scripts/python.exe -m app.spider_forge_system batch

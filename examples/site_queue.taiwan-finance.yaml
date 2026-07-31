@@ -1,4 +1,6 @@
-# spider_forge 要接的新聞站清單（docs/spec/08 §5）。
+# 【範例檔，不是核心預設】台灣財經新聞站清單——原專案的用例，僅示範格式。
+# 用自己的清單：複製本檔改寫，然後 `set SPIDERFORGE_SITE_QUEUE=<你的.yaml>`。
+#
 # 一站一個 graph thread；runs/batch.py 依序跑。source_prefix = article_id 前綴。
 #
 # validation：品質閘門設定（P0-1）。article_url_patterns/excluded_url_patterns 是站特有，

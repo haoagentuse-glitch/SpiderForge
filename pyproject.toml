@@ -25,8 +25,7 @@ test = ["pytest>=8.4,<9"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-data]
-spider_forge = ["site_queue.yaml"]
+# 套件本身不夾帶站台清單（站清單是使用者資料，範例放 examples/）。
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

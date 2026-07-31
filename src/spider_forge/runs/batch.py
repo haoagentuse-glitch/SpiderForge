@@ -22,6 +22,12 @@ from .ledger import append_run, summarize
 
 
 def load_sites(only: list[str] | None = None) -> list[dict]:
+    if not SITE_QUEUE_PATH.is_file():
+        raise FileNotFoundError(
+            f"找不到站台清單：{SITE_QUEUE_PATH}。"
+            "套件不內建站清單，請用環境變數 SPIDERFORGE_SITE_QUEUE 指向自己的 YAML"
+            "（格式見 examples/site_queue.taiwan-finance.yaml）。"
+        )
     sites = yaml.safe_load(
         SITE_QUEUE_PATH.read_text(encoding="utf-8")
     )["sites"]
