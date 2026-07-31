@@ -190,6 +190,18 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 - Windows/PowerShell；檢視含中文 JSON 用 `python -X utf8 -c` 印，別直接 Read。
 - 活站/Docker 測試依既有決定由使用者手動執行；本計畫的自動驗收以離線 `pytest` 為準。
 
+## 5.5 核心價值驗收（實測，2026-08-01）
+
+計畫開頭那句「加一個節點只要新增一檔 + pipeline 拼裝一行」有沒有做到——**實跑演練過**：
+真的加一個 `LinkCensus` 節點插在 recon 與 triage 之間，結果是
+
+- 新增 `nodes/_demo_link_census.py` **1 個檔**（20 行，`__init__` 存設定 + `__call__` 執行）
+- `pipeline.py` **5 insertions / 1 deletion**：import 1 行、實例化 1 行、註冊 1 行、
+  接線把 `recon→triage` 1 行換成 2 行（插在中間必然要接兩段線，這是流程本身的成本）
+- **其他檔案零改動**；`pytest` 142 passed；`get_graph()` 確認新節點在圖上且接線正確
+
+演練後已還原（`git checkout` + 刪檔），repo 沒留示範垃圾。結論：價值主張成立。
+
 ## 6. 給接手者的話
 
 - 每階段獨立可交付；額度不夠就停在階段邊界 commit，下次從下一個未打勾項續。
