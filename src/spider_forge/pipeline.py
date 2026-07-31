@@ -16,7 +16,8 @@ from .stages.generate import (
     preflight_generated_code,
     strategy_decision,
 )
-from .stages.probe import prepare_request, recon
+from .nodes.recon import Recon
+from .stages.probe import prepare_request
 from .stages.repair import (
     diagnose_failure,
     repair_code,
@@ -36,6 +37,10 @@ from .state import (
 )
 
 _PROVIDER_RETRY_MAX = 2
+
+# recon 已 class 化（nodes/recon.py）。module-level instance 讓 pipeline.recon 仍可
+# 直接呼叫（相容既有測試），同時供 build_pipeline 的 add_node 使用。
+recon = Recon()
 
 
 def route_after_triage(state: SpiderForgeState) -> str:

@@ -101,10 +101,13 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 > 領域槓桿：台灣財經/政策的綁定主要藏在 topic prompt 裡。prompt 拆出可注入後，「換領域＝換一個 prompt 檔」，等於順手做掉階段 6 一大半。
 
 ### 階段 4 — Node 基類 + 一個節點 class 化（驗證模式）
-- [ ] 4.1 `nodes/base.py`：`Node` 基類（`__call__` 抽象）
-- [ ] 4.2 挑一個節點（`recon`）改成 class，`pipeline.py` 塞 instance
-- [ ] 4.3 驗收：`pytest` 維持綠 + 該節點的行為測試通過 → **證明模式對，才放大**
-- [ ] 4.4 commit：`refactor: 階段4 Node 基類 + recon class 化`
+- [x] 4.1 `nodes/base.py`：`Node` 基類（`__call__(state)->dict` 抽象）
+- [x] 4.2 `nodes/recon.py`：`Recon`（__init__ 注入 prober、__call__ 執行）；`recon` 邏輯自 probe.py 搬出；pipeline.py 用 module-level `recon = Recon()` 相容 `pipeline.recon`
+- [x] 4.3 驗收：pytest 138 passed/1 skipped，含 `t_recon_does_not_fetch_robots`（monkeypatch browser.probe，證明 late-bind 相容）
+- [x] 4.4 commit：`refactor: 階段4 Node 基類 + recon class 化`
+
+> **模式已驗證**：節點=class、__init__ 注入依賴、__call__ 執行、與 LangGraph/既有測試相容。階段5 照此模式放大到其餘節點。
+> late-bind 要點：需 monkeypatch 的依賴（如 browser.probe）預設 None、__call__ 時才 import，不在 __init__ 綁定。
 
 ### 階段 5 — 其餘節點 class 化（機械放大，可派 subagent）
 - [ ] 5.1 其餘節點照階段 4 模式逐一改 class
