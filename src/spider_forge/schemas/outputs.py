@@ -1,7 +1,7 @@
 """抓取目標的資料形狀 —— 集中的唯一真實來源。
 
 改要抓什麼欄位，只改這個檔。pydantic ``Article`` 是給人看與驗證用的定義；
-``DEFAULT_TARGET_SCHEMA`` 是 pipeline 目前流動的 dict 契約（stages/probe.py 深拷貝
+``DEFAULT_TARGET_SCHEMA`` 是 pipeline 目前流動的 dict 契約（nodes/prepare_request.py 深拷貝
 後放進 state["target_schema"]），保留原結構與語意鍵（type/required/mode/max_chars…），
 向下相容。兩者描述同一組欄位；語意鍵是 dict 契約特有、pydantic 標準 schema 不涵蓋，
 故與 Article 並列而非自動生成。未來若要讓 pipeline 全面走 pydantic，從這裡收斂。

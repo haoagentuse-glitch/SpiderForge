@@ -12,30 +12,22 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from ...clients.coder import drain_usage
-from ...stages.evidence import collect_evidence
-from ...stages.fixture import fixture_test
-from ...stages.generate import (
-    generate_spider,
-    preflight_generated_code,
-    strategy_decision,
-)
-from ...stages.probe import prepare_request, recon
-from ...stages.repair import repair_code, repair_code_kimi
-from ...stages.triage import feasibility_triage
+from spider_forge import pipeline
+from spider_forge.clients.coder import drain_usage
 
+# 節點已 class 化（階段8）：直接用 pipeline 拼好的實例，設定與正式流程完全一致。
 Stage = Callable[[dict], dict]
 STAGES: dict[str, Stage] = {
-    "prepare": prepare_request,
-    "recon": recon,
-    "triage": feasibility_triage,
-    "strategy": strategy_decision,
-    "evidence": collect_evidence,
-    "generate": generate_spider,
-    "preflight": preflight_generated_code,
-    "fixture": fixture_test,
-    "repair": repair_code,
-    "repair_kimi": repair_code_kimi,
+    "prepare": pipeline.prepare_request,
+    "recon": pipeline.recon,
+    "triage": pipeline.feasibility_triage,
+    "strategy": pipeline.strategy_decision,
+    "evidence": pipeline.collect_evidence,
+    "generate": pipeline.generate_spider,
+    "preflight": pipeline.preflight_generated_code,
+    "fixture": pipeline.fixture_test,
+    "repair": pipeline.repair_code,
+    "repair_kimi": pipeline.repair_code_kimi,
 }
 
 

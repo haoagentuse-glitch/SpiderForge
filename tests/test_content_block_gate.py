@@ -18,7 +18,10 @@ from pathlib import Path
 
 from spider_forge import pipeline as graph
 from spider_forge.shared import repair as repair_stage
-from spider_forge.stages import validate as validate_stage
+from spider_forge.nodes.block_gate import ContentBlockGate
+
+# 節點已 class 化（階段8）：建一個實例來測它的內部判準。
+block_gate = ContentBlockGate()
 
 
 _REAL = "台股今日收紅，權值股領漲，法人買超金額創近月新高，市場觀望聯準會利率決策。"
@@ -28,10 +31,10 @@ _REAL = "台股今日收紅，權值股領漲，法人買超金額創近月新�
 
 
 def t_looks_like_block_matches_challenge_not_real_news():
-    block = validate_stage._looks_like_block(
+    block = block_gate._looks_like_block(
         {"title": "Just a moment...", "content": "Checking your browser before accessing."}
     )
-    real = validate_stage._looks_like_block({"title": "台股收盤", "content": _REAL})
+    real = block_gate._looks_like_block({"title": "台股收盤", "content": _REAL})
     return block and not real, f"block={block} real={real}"
 
 
@@ -41,14 +44,14 @@ def t_detect_block_when_majority_are_challenge_pages():
         {"title": "Access Denied", "content": "拒絕存取"},
         {"title": "台股", "content": _REAL},
     ]
-    detection = validate_stage._detect_block_page(items)
+    detection = block_gate.detect(items)
     ok = detection["verdict"] == "block" and detection["method"] == "deterministic"
     return ok, f"detection={detection}"
 
 
 def t_detect_block_when_contents_near_identical():
     items = [{"title": f"t{i}", "content": "同一段被重複的樣板內容" * 5} for i in range(5)]
-    detection = validate_stage._detect_block_page(items)
+    detection = block_gate.detect(items)
     ok = detection["verdict"] == "block" and detection.get("near_identical") is True
     return ok, f"detection={detection}"
 
@@ -59,7 +62,7 @@ def t_detect_content_when_varied_real_articles():
         {"title": "t2", "content": _REAL + "B 半導體出口成長"},
         {"title": "t3", "content": _REAL + "C 央行升息一碼"},
     ]
-    detection = validate_stage._detect_block_page(items)
+    detection = block_gate.detect(items)
     ok = detection["verdict"] == "content" and detection["method"] == "deterministic"
     return ok, f"detection={detection}"
 
@@ -71,7 +74,7 @@ def t_ambiguous_uses_injected_gemini_and_can_flip_to_block():
         {"title": "t3", "content": _REAL + "C"},
         {"title": "t4", "content": _REAL + "D"},
     ]
-    detection = validate_stage._detect_block_page(
+    detection = block_gate.detect(
         items, classify_fn=lambda leads: {"verdict": "block", "reason": "整批像錯誤頁"}
     )
     ok = detection["verdict"] == "block" and detection["method"] == "gemini"
@@ -89,7 +92,7 @@ def t_ambiguous_gemini_error_fails_open_to_content():
     def boom(_leads):
         raise RuntimeError("gemini 連線失敗")
 
-    detection = validate_stage._detect_block_page(items, classify_fn=boom)
+    detection = block_gate.detect(items, classify_fn=boom)
     ok = detection["verdict"] == "content" and detection["method"] == "gemini_error_failopen"
     return ok, f"detection={detection}"
 
@@ -111,7 +114,7 @@ def t_gate_flags_block_and_routes_to_diagnose():
         ]
     )
     try:
-        result = validate_stage.content_block_gate(
+        result = block_gate(
             {"strategy": "dom", "test_result": {"passed": True, "output_path": out}}
         )
         route = graph.route_after_block_gate(result)
@@ -130,7 +133,7 @@ def t_gate_passes_clean_run_to_validate():
         ]
     )
     try:
-        result = validate_stage.content_block_gate(
+        result = block_gate(
             {"strategy": "dom", "test_result": {"passed": True, "output_path": out}}
         )
         route = graph.route_after_block_gate(result)
@@ -141,7 +144,7 @@ def t_gate_passes_clean_run_to_validate():
 
 
 def t_gate_skips_unfinished_crawl():
-    unfinished = validate_stage.content_block_gate(
+    unfinished = block_gate(
         {"strategy": "dom", "test_result": {"passed": False}}
     )
     ok = unfinished["block_page_detected"] is False

@@ -10,7 +10,8 @@
 ## 模組邊界
 
 - `pipeline.py` 是唯一流程組裝入口，負責節點順序與分支。
-- `stages/` 只放流程節點；節點不得互相 import。
+- `nodes/` 是節點積木庫：一個節點一個 class（`__init__` 存設定 / `__call__` 執行）。
+  加新節點 = 這裡多一個檔 + `pipeline.py` 拼裝一行；節點不得互相 import（有測試鎖住）。
 - `shared/` 放多個節點共同使用的解析、提示、品質規則及領域服務。
 - `sandbox_runtime/fixture_runner.py` 是離線重播引擎，只在**沙盒子程序**內以檔案路徑執行，
   只吃 JSON fixture 契約、不 import 控制層；控制層也不 import 它。

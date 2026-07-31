@@ -15,7 +15,9 @@ from datetime import datetime, timezone
 
 from spider_forge.output import artifacts
 from spider_forge.output.manager import persist_spider
-from spider_forge.stages.validate import validate_output
+from spider_forge.nodes.validate import ValidateOutput
+
+validate_output = ValidateOutput()
 from spider_forge.shared.sandbox import run_candidate
 from spider_forge.output.artifacts import (
     active_path,

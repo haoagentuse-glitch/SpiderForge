@@ -163,9 +163,21 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 ### 階段 8 — 全節點 class 化（最後）
 其餘 15 個 graph 節點照階段4 Recon 模式逐一 class 化。放最後：前面通用化/解耦會改動
 節點邏輯，穩定後再 class 化最省事。
-- [ ] 8.1 逐一改 class（需 monkeypatch 的依賴用 late-bind，見階段4 要點）
-- [ ] 8.2 每改一個跑 pytest 對照基準
-- [ ] 8.3 commit：`refactor: 階段8 全節點 class 化`
+- [x] 8.1 有邏輯的節點搬進 `nodes/`：`PrepareRequest`(可注入 default_schema / max_retries_cap)、
+      `FeasibilityTriage`、`ContentBlockGate`(可注入 extra_patterns 補其他語系封鎖字樣 / classifier)、
+      `ValidateOutput`(可注入 validator)、`TopicGate`(可注入 evaluator)
+- [x] 8.2 薄殼節點（邏輯留 shared/）：CollectEvidence / StrategyDecision / GenerateSpider /
+      GenerationPreflight / FixtureTest / SandboxTest / DiagnoseFailure / PersistSpider / EscalateHuman，
+      皆可傳 `impl=` 整支替換；`RepairCode(kimi=True/False)` 一塊積木兩種設定取代兩個函式
+- [x] 8.3 **`stages/` 目錄消失**（`git rm`）：pipeline 只 import `nodes/`，測試/手動腳本引用一併更新
+- [x] 8.4 邊界測試改版：`t_stages_do_not_import_other_stages` → `t_nodes_do_not_import_other_nodes`，
+      **並實測它會抓到違規**（故意建 `from .recon import ...` 的檔 → FAIL 指出檔案:行號，移除後回綠）
+- [x] 8.5 驗收：**142 passed**（與階段7 同基準，零迴歸）
+- [x] 8.6 commit：`refactor: 階段8 全節點 class 化`
+
+> 備忘（不影響現況）：`RepairCode` 的 provider 仍由 config 常數決定（`REPAIR_PROVIDER` /
+> `FINAL_REPAIR_PROVIDER`），沒有做成建構子參數——那要改 `shared/repair.py` 的 `_safe_generate`
+> 簽名，屬邏輯改動而非搬遷，留給真的需要「同一流程跑多家供應商」時再做。
 
 > 潛在待查（ChatGPT 提出，次要）：`persist_spider` 的冪等性（重跑不重複寫）——需看
 > `output/manager.py` 確認是否已用 run_id 去重；非架構缺陷，列此備忘。

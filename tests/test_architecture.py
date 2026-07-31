@@ -6,7 +6,7 @@ import ast
 from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1] / "src" / "spider_forge"
-STAGES_DIR = PACKAGE_DIR / "stages"
+NODES_DIR = PACKAGE_DIR / "nodes"
 ROOT_PYTHON_FILES = {
     "__init__.py",
     "__main__.py",
@@ -21,16 +21,18 @@ def _tree(path: Path) -> ast.AST:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
-def t_stages_do_not_import_other_stages():
+def t_nodes_do_not_import_other_nodes():
+    """積木不互相 import，只由 pipeline.py 組裝（鐵律3）。base.py 是共同基類，不算節點。"""
     violations: list[str] = []
-    for path in STAGES_DIR.glob("*.py"):
+    for path in NODES_DIR.glob("*.py"):
+        if path.name in {"__init__.py", "base.py"}:
+            continue
         for node in ast.walk(_tree(path)):
             if not isinstance(node, ast.ImportFrom):
                 continue
             module = node.module or ""
-            if node.level == 1 or module.startswith(
-                "spider_forge.stages"
-            ):
+            same_package = node.level == 1 and module not in {"base", ""}
+            if same_package or module.startswith("spider_forge.nodes"):
                 violations.append(f"{path.name}:{node.lineno}:{module}")
     return not violations, f"violations={violations}"
 
@@ -69,7 +71,7 @@ def t_execution_entries_only_depend_on_pipeline():
             if not isinstance(node, ast.ImportFrom):
                 continue
             module = node.module or ""
-            if module.startswith("stages") or ".stages" in module:
+            if module.startswith("nodes") or ".nodes" in module:
                 violations.append(
                     f"{path.relative_to(PACKAGE_DIR)}:{node.lineno}:{module}"
                 )
@@ -140,7 +142,7 @@ def t_forge_result_returns_only_output_fields():
 
 
 TESTS = [
-    t_stages_do_not_import_other_stages,
+    t_nodes_do_not_import_other_nodes,
     t_state_layers_partition_the_whole_state,
     t_graph_entry_only_accepts_input_fields,
     t_forge_result_returns_only_output_fields,

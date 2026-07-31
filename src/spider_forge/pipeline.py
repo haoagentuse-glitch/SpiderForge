@@ -8,28 +8,22 @@ from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from .output.manager import escalate_human, persist_spider
-from .stages.evidence import collect_evidence
-from .stages.fixture import fixture_test
-from .stages.generate import (
-    generate_spider,
-    preflight_generated_code,
-    strategy_decision,
-)
+from .nodes.block_gate import ContentBlockGate
+from .nodes.diagnose import DiagnoseFailure
+from .nodes.escalate import EscalateHuman
+from .nodes.evidence import CollectEvidence
+from .nodes.fixture import FixtureTest
+from .nodes.generate import GenerateSpider
+from .nodes.persist import PersistSpider
+from .nodes.prepare_request import PrepareRequest
+from .nodes.preflight import GenerationPreflight
 from .nodes.recon import Recon
-from .stages.probe import prepare_request
-from .stages.repair import (
-    diagnose_failure,
-    repair_code,
-    repair_code_kimi,
-)
-from .stages.sandbox import sandbox_test
-from .stages.triage import feasibility_triage
-from .stages.validate import (
-    apply_topic_gate,
-    content_block_gate,
-    validate_output,
-)
+from .nodes.repair import RepairCode
+from .nodes.sandbox import SandboxTest
+from .nodes.strategy import StrategyDecision
+from .nodes.topic_gate import TopicGate
+from .nodes.triage import FeasibilityTriage
+from .nodes.validate import ValidateOutput
 from .state import (
     KILL_FAILURE_CLASSES,
     ForgeInput,
@@ -40,9 +34,26 @@ from .state import (
 
 _PROVIDER_RETRY_MAX = 2
 
-# recon 已 class 化（nodes/recon.py）。module-level instance 讓 pipeline.recon 仍可
-# 直接呼叫（相容既有測試），同時供 build_pipeline 的 add_node 使用。
+# ── 積木拼裝：每個節點在這裡實例化一次，設定寫在建構子（= pytorch 的 __init__）──
+# 這些 module-level 名字同時是「可替換點」：測試或使用者把 pipeline.sandbox_test 換掉，
+# build_pipeline() 讀 global 就會拿到替換後的版本。
+prepare_request = PrepareRequest()
 recon = Recon()
+feasibility_triage = FeasibilityTriage()
+strategy_decision = StrategyDecision()
+collect_evidence = CollectEvidence()
+generate_spider = GenerateSpider()
+preflight_generated_code = GenerationPreflight()
+fixture_test = FixtureTest()
+sandbox_test = SandboxTest()
+content_block_gate = ContentBlockGate()
+validate_output = ValidateOutput()
+apply_topic_gate = TopicGate()
+diagnose_failure = DiagnoseFailure()
+repair_code = RepairCode()
+repair_code_kimi = RepairCode(kimi=True)   # 同一塊積木、換一個設定
+persist_spider = PersistSpider()
+escalate_human = EscalateHuman()
 
 
 def route_after_triage(state: SpiderForgeState) -> str:
