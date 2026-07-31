@@ -59,8 +59,11 @@ def complete(
         raise CoderError(str(exc)) from exc
     temp = spec.default_temperature if temperature is None else temperature
     default_max_tokens = "8000" if spec.name == "kimi" else "5000"
+    # 其餘變數一律 SPIDERFORGE_ 前綴；SPIDER_FORGE_ 是舊名，保留相容。
     max_tokens = int(
-        os.getenv("SPIDER_FORGE_MAX_COMPLETION_TOKENS", default_max_tokens)
+        os.getenv("SPIDERFORGE_MAX_COMPLETION_TOKENS")
+        or os.getenv("SPIDER_FORGE_MAX_COMPLETION_TOKENS")
+        or default_max_tokens
     )
 
     messages = ([{"role": "system", "content": system}] if system else []) + [

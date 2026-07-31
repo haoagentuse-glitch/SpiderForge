@@ -141,8 +141,60 @@ def t_forge_result_returns_only_output_fields():
     }, f"result_keys={sorted(result)}"
 
 
+def _env_vars_read_by_code() -> set[str]:
+    """AST 掃出程式碼真正讀取的環境變數（含 registry 的 api_key_env 間接讀取）。"""
+    read: set[str] = set()
+    for path in PACKAGE_DIR.rglob("*.py"):
+        for node in ast.walk(_tree(path)):
+            if isinstance(node, ast.Call) and node.args:
+                func = node.func
+                name = ""
+                if isinstance(func, ast.Attribute):
+                    name = func.attr
+                    base = func.value
+                    if isinstance(base, ast.Attribute):
+                        name = f"{base.attr}.{name}"
+                    elif isinstance(base, ast.Name):
+                        name = f"{base.id}.{name}"
+                if name in {"os.getenv", "environ.get", "os.environ.get"}:
+                    first = node.args[0]
+                    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                        read.add(first.value)
+            if isinstance(node, ast.keyword) and node.arg == "api_key_env":
+                if isinstance(node.value, ast.Constant):
+                    read.add(node.value.value)
+            if isinstance(node, ast.keyword) and node.arg == "api_key_env_aliases":
+                for element in getattr(node.value, "elts", []):
+                    if isinstance(element, ast.Constant):
+                        read.add(element.value)
+    return read
+
+
+def t_env_example_has_no_dead_variables():
+    """.env.example 不得出現程式碼不讀的變數。
+
+    踩過的坑：example 寫 GEMINI_API_KEY 但程式碼讀 LLM_API_KEY，照著填會拿不到金鑰
+    且完全沒有錯誤提示。明確標為「預留」的例外列在 RESERVED。
+    """
+    import re
+
+    reserved = {"OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL", "DATABASE_URL"}
+    example = PACKAGE_DIR.parents[1] / ".env.example"
+    if not example.is_file():
+        return False, f"找不到 {example}"
+    declared = [
+        match.group(1)
+        for line in example.read_text(encoding="utf-8").splitlines()
+        if (match := re.match(r"^([A-Z][A-Z0-9_]*)=", line.strip()))
+    ]
+    read = _env_vars_read_by_code()
+    dead = sorted(set(declared) - read - reserved)
+    return not dead, f"程式碼不讀卻出現在 .env.example：{dead}"
+
+
 TESTS = [
     t_nodes_do_not_import_other_nodes,
+    t_env_example_has_no_dead_variables,
     t_state_layers_partition_the_whole_state,
     t_graph_entry_only_accepts_input_fields,
     t_forge_result_returns_only_output_fields,
