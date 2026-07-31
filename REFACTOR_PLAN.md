@@ -109,16 +109,46 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 > **模式已驗證**：節點=class、__init__ 注入依賴、__call__ 執行、與 LangGraph/既有測試相容。階段5 照此模式放大到其餘節點。
 > late-bind 要點：需 monkeypatch 的依賴（如 browser.probe）預設 None、__call__ 時才 import，不在 __init__ 綁定。
 
-### 階段 5 — 其餘節點 class 化（機械放大，可派 subagent）
-- [ ] 5.1 其餘節點照階段 4 模式逐一改 class
-- [ ] 5.2 每改一個跑一次 `pytest` 對照基準
-- [ ] 5.3 commit：`refactor: 階段5 全節點 class 化`
+> **順序調整（使用者定調）**：class 化其餘節點移到**最後**（階段8）。先做通用化與結構，
+> 因為那些會改動節點邏輯，等穩定了再 class 化最省事。以下階段 5→8 依序執行。
 
-### 階段 6 — 領域耦合抽離（通用化收尾）
-- [ ] 6.1 台灣財經/公共政策 topic labels、site_queue、request_identity 的 zh-TW/課程字樣 → 抽成可注入設定（`domains/` 或 config）
-- [ ] 6.2 `DEFAULT_TARGET_SCHEMA` 綁死新聞文章 → 由階段 3 的可換 schema 取代
-- [ ] 6.3 驗收：換一個領域設定即可跑非新聞站（最小示範）
-- [ ] 6.4 commit：`refactor: 階段6 領域耦合抽離`
+### 階段 5 — 領域耦合抽離（通用化：從台灣財經專用 → 可換設定）
+把「這是台灣財經新聞爬蟲」的硬編碼抽成可替換設定 —— 最貼近「通用函式」目標的一塊。
+- [ ] 5.1 主題分類去領域化：`shared/topic.py` 的 `LABELS=("finance","public_policy")`、
+      `DEFAULT_CONFIG mode="enforce"`、`clients/topic.py`/`page.py` 的財經/政策 prompt
+      → 抽成可注入領域設定；預設不再開箱就被財經 gate 卡
+- [ ] 5.2 topic/strategy/diagnose 內嵌 prompt 搬進 `prompts/`（補完 3b 留下的 prompts/ 目錄）
+- [ ] 5.3 `request_identity.py` 的 zh-TW Accept-Language / Windows UA / 課程字樣 → 可設定
+- [ ] 5.4 `site_queue.yaml` 台灣財經站清單 → 標為範例，不當核心預設
+- [ ] 5.5 驗收：pytest 綠；關掉 topic gate 後能跑非財經站（最小示範）
+- [ ] 5.6 commit：`refactor: 階段5 領域耦合抽離`
+
+### 階段 6 — crawler_runtime 解耦（拔外部執行引擎依賴）
+**【對話中新發現】** 離線重播(fixture_test) 的執行引擎跑在外部 `crawler_runtime` 子程序
+（`shared/sandbox.py:198,205` → `news_crawler.fixture_runner`），獨立副本裡不存在（階段1
+那個 skip 的測試就是它）。通用套件不該綁死外部專案。
+- [ ] 6.1 把 fixture runner 執行器抽象成可注入介面（預設本地實作，crawler_runtime 降為可選 adapter）
+- [ ] 6.2 或內化最小 fixture runner，不依賴 news_crawler
+- [ ] 6.3 驗收：階段1 skip 的 `t_fixture_runner_...` 在無 crawler_runtime 下能跑（改用內化引擎）
+- [ ] 6.4 commit：`refactor: 階段6 crawler_runtime 解耦`
+
+### 階段 7 — state 分離（input / internal / output）
+**【對話中新發現，唯一採納的架構評語】** `SpiderForgeState` 單一 TypedDict 混了輸入
+（site_url/target_schema）、中間態（retry_count/recon_report）、產出。分離讓對外介面乾淨。
+- [ ] 7.1 拆出 input schema（使用者要給的）與 output schema（最終要回的），internal 留內部
+- [ ] 7.2 用 LangGraph 的 input/output schema 機制或 pydantic 分層
+- [ ] 7.3 驗收：pytest 綠；forge_spider 對外只收/回乾淨欄位
+- [ ] 7.4 commit：`refactor: 階段7 state 分離`
+
+### 階段 8 — 全節點 class 化（最後）
+其餘 15 個 graph 節點照階段4 Recon 模式逐一 class 化。放最後：前面通用化/解耦會改動
+節點邏輯，穩定後再 class 化最省事。
+- [ ] 8.1 逐一改 class（需 monkeypatch 的依賴用 late-bind，見階段4 要點）
+- [ ] 8.2 每改一個跑 pytest 對照基準
+- [ ] 8.3 commit：`refactor: 階段8 全節點 class 化`
+
+> 潛在待查（ChatGPT 提出，次要）：`persist_spider` 的冪等性（重跑不重複寫）——需看
+> `output/manager.py` 確認是否已用 run_id 去重；非架構缺陷，列此備忘。
 
 ## 5. 環境與指令
 
