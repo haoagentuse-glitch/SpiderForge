@@ -136,10 +136,17 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 **【對話中新發現】** 離線重播(fixture_test) 的執行引擎跑在外部 `crawler_runtime` 子程序
 （`shared/sandbox.py:198,205` → `news_crawler.fixture_runner`），獨立副本裡不存在（階段1
 那個 skip 的測試就是它）。通用套件不該綁死外部專案。
-- [ ] 6.1 把 fixture runner 執行器抽象成可注入介面（預設本地實作，crawler_runtime 降為可選 adapter）
-- [ ] 6.2 或內化最小 fixture runner，不依賴 news_crawler
-- [ ] 6.3 驗收：階段1 skip 的 `t_fixture_runner_...` 在無 crawler_runtime 下能跑（改用內化引擎）
-- [ ] 6.4 commit：`refactor: 階段6 crawler_runtime 解耦`
+- [x] 6.1 執行器可注入：`shared/sandbox.py:_fixture_runner_command()`；預設內建，
+      `SPIDERFORGE_FIXTURE_RUNNER`(+`_CWD`) 可換外部模組（原 `news_crawler.fixture_runner` 降為 opt-in adapter）
+- [x] 6.2 內化重播引擎 `sandbox_runtime/fixture_runner.py`：exec 候選碼取 Spider 子類 →
+      用 fixture 的 listing/detail body 造 Response → 呼叫 callback → 驗屬性/網域/欄位/數量。
+      **只在子程序內以檔案路徑執行、不 import 任何 spider_forge 模組**（沙盒隔離不變）
+- [x] 6.3 驗收：**139 passed, 0 skipped**（原 skip 的測試已改名 `t_fixture_runner_executes_candidate_in_subprocess` 並真跑）。
+      負向冒煙另驗四種失敗都抓得到：selector 壞→`missing_detail_request`、屬性錯→`class_attribute_mismatch`、
+      跨網域→`detail_request_out_of_scope`、（欄位/字數/數量規則同一條路徑）
+- [x] 6.4 順手一般化：`build_fixture_spec` 新增 `required_fields`（取自 `target_schema.fields` 的 required），
+      重播不再寫死 title/url/content/published_at 四欄
+- [x] 6.5 commit：`refactor: 階段6 crawler_runtime 解耦`
 
 ### 階段 7 — state 分離（input / internal / output）
 **【對話中新發現，唯一採納的架構評語】** `SpiderForgeState` 單一 TypedDict 混了輸入

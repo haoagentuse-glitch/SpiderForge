@@ -106,8 +106,14 @@ def build_fixture_spec(state: SpiderForgeState) -> dict[str, Any]:
         max(1, observed),
     )
     schema = state.get("target_schema") or {}
+    required_fields = [
+        name
+        for name, rule in (schema.get("fields") or {}).items()
+        if not isinstance(rule, dict) or rule.get("required", True)
+    ]
     return {
         "listing": listing,
+        "required_fields": required_fields,
         "detail_samples": samples,
         "browser_required": (
             "browser_transport" in set(pack.get("requirements") or [])

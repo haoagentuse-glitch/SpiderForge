@@ -155,6 +155,32 @@ def run_candidate(
         )
 
 
+# 離線重播引擎：預設用套件內建的 fixture runner（不依賴任何外部專案）。
+# 想接自己的執行引擎（例：原專案的 news_crawler.fixture_runner）：
+#   SPIDERFORGE_FIXTURE_RUNNER=news_crawler.fixture_runner
+#   SPIDERFORGE_FIXTURE_RUNNER_CWD=<能 import 到該模組的目錄>
+# 只要它遵守同一份 stdin/stdout JSON 契約（見 sandbox_runtime/fixture_runner.py）。
+_INTERNAL_FIXTURE_RUNNER = (
+    Path(__file__).resolve().parents[1] / "sandbox_runtime" / "fixture_runner.py"
+)
+
+
+def _fixture_runner_command(
+    python_exe: str, default_cwd: Path
+) -> tuple[list[str], Path]:
+    """組出重播子程序的命令與工作目錄（內建 runner vs 外部 adapter）。"""
+    external = os.environ.get("SPIDERFORGE_FIXTURE_RUNNER", "").strip()
+    if not external or external == "internal":
+        return (
+            [python_exe, "-X", "utf8", str(_INTERNAL_FIXTURE_RUNNER)],
+            default_cwd,
+        )
+    cwd = Path(
+        os.environ.get("SPIDERFORGE_FIXTURE_RUNNER_CWD") or default_cwd
+    ).expanduser()
+    return [python_exe, "-X", "utf8", "-m", external], cwd
+
+
 def run_fixture_candidate(
     candidate_path: str,
     fixture: dict,
@@ -195,15 +221,10 @@ def run_fixture_candidate(
             False,
         )
 
-    crawler_runtime = Path(__file__).resolve().parents[3] / "crawler_runtime"
     env = sandbox_env(allowed_domains)
-    cmd = [
-        python_exe or sys.executable,
-        "-X",
-        "utf8",
-        "-m",
-        "news_crawler.fixture_runner",
-    ]
+    cmd, cwd = _fixture_runner_command(
+        python_exe or sys.executable, Path(candidate_path).resolve().parent
+    )
     try:
         proc = subprocess.run(
             cmd,
@@ -213,7 +234,7 @@ def run_fixture_candidate(
             encoding="utf-8",
             errors="replace",
             timeout=timeout_s,
-            cwd=str(crawler_runtime),
+            cwd=str(cwd),
             env=env,
         )
         return SandboxResult(
@@ -277,7 +298,8 @@ def _run_fixture_candidate_docker(
         "python",
         image,
         "-m",
-        "news_crawler.fixture_runner",
+        # docker 路徑跑的是映像**自帶**的 runner 模組（映像裡沒有本套件）。
+        os.environ.get("SPIDERFORGE_FIXTURE_RUNNER", "news_crawler.fixture_runner"),
     ]
     try:
         proc = subprocess.run(

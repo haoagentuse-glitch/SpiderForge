@@ -12,13 +12,15 @@
 - `pipeline.py` 是唯一流程組裝入口，負責節點順序與分支。
 - `stages/` 只放流程節點；節點不得互相 import。
 - `shared/` 放多個節點共同使用的解析、提示、品質規則及領域服務。
-- `crawler_runtime/news_crawler/fixture_runner.py` 只執行 JSON fixture 契約，
-  不依賴控制層；控制層也不 import crawler runtime。
+- `sandbox_runtime/fixture_runner.py` 是離線重播引擎，只在**沙盒子程序**內以檔案路徑執行，
+  只吃 JSON fixture 契約、不 import 控制層；控制層也不 import 它。
+  想換成別的重播引擎：`SPIDERFORGE_FIXTURE_RUNNER=<module>`（+ `..._CWD`），遵守同一份契約即可。
 - `clients/` 封裝瀏覽器與模型服務。
 - `output/` 管理候選、正式版本、歷史版本及人工回滾。
 - `runs/` 管理追加式執行紀錄。
 - `config.py` 是設定與執行期路徑的唯一來源。
-- Spider Forge 不 import `crawler_runtime` 或 `news_crawler`。
+- Spider Forge 不 import 任何外部爬蟲專案（`crawler_runtime` / `news_crawler`）；
+  離線重播已內化到 `sandbox_runtime/`，外部引擎降為可選 adapter。
 
 候選爬蟲是自包含單一檔案，會在檔內定義 `ArticleItem`。本機沙盒直接以
 `scrapy runspider` 執行；Docker 模式則把程式經標準輸入送進獨立、唯讀且無機密資料的

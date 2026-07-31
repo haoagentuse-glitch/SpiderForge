@@ -162,13 +162,8 @@ def _fixture() -> dict:
     }
 
 
-def t_fixture_runner_executes_candidate_in_crawler_subprocess():
-    crawler_runtime = Path(__file__).resolve().parents[1] / "crawler_runtime"
-    if not crawler_runtime.is_dir():
-        pytest.skip(
-            "需要外部 crawler_runtime（news_crawler.fixture_runner 子程序）；"
-            "獨立副本中不存在，待階段6 解耦"
-        )
+def t_fixture_runner_executes_candidate_in_subprocess():
+    """內建 fixture runner 子程序能重播候選（階段6：不再依賴外部 crawler_runtime）。"""
     with tempfile.TemporaryDirectory() as temp_dir:
         candidate = Path(temp_dir) / "candidate.py"
         candidate.write_text(_GOOD_CANDIDATE, encoding="utf-8")
@@ -284,7 +279,7 @@ def t_graph_routes_preflight_and_fixture_before_live_crawl():
 
 TESTS = [
     t_material_compiler_removes_dom_noise_and_unselected_sources,
-    t_fixture_runner_executes_candidate_in_crawler_subprocess,
+    t_fixture_runner_executes_candidate_in_subprocess,
     t_pure_api_fixture_does_not_require_html_detail_callbacks,
     t_fixture_failure_is_diagnosed_without_judge_call,
     t_graph_routes_preflight_and_fixture_before_live_crawl,
