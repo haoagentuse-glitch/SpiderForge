@@ -187,9 +187,22 @@ uv sync --extra observability
 docker compose -f Phoenix/compose.yaml up -d
 ```
 
-在 `.env` 設 `PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces`,之後
-`spider_forge run` 就會把 trace 送進 <http://localhost:6006>。**沒設這個變數時完全不啟用**
-（不 import Phoenix、零開銷），所以套件不裝觀測套件也照樣跑。
+在 **repo 根的 `.env`** 設 `PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces`,
+之後 `spider_forge run` 就會把 trace 送進 <http://localhost:6006>。**沒設這個變數時完全不啟用**
+（不 import Phoenix、零開銷），所以不裝觀測套件也照樣跑。
+
+兩份 `.env` 按**讀者**分工，不要互搬：
+
+| 檔案 | 讀者 | 放什麼 |
+|---|---|---|
+| repo 根 `.env` | `spider_forge` 程式 | `PHOENIX_COLLECTOR_ENDPOINT` / `PHOENIX_PROJECT` / `PHOENIX_API_KEY` / trace 開關 |
+| `Phoenix/.env` | `docker compose` | 服務端：埠、保留天數、映像版本（全部選填，見 `Phoenix/.env.example`）|
+
+⚠️ 客戶端變數放進 `Phoenix/.env` 會**靜默失效**：套件的 `.env` loader 只往上層目錄搜尋，
+`Phoenix/` 是子目錄，程式讀不到。
+
+Phoenix container 的環境只有 `compose.yaml` 裡明列的變數（沒有 `env_file`、沒掛載 repo），
+所以它拿不到任何 LLM 金鑰；候選爬蟲的沙盒子程序同樣走白名單，也拿不到。
 
 看得到的東西：
 
