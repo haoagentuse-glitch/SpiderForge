@@ -32,7 +32,9 @@ from .stages.validate import (
 )
 from .state import (
     KILL_FAILURE_CLASSES,
+    ForgeInput,
     SpiderForgeState,
+    forge_result,
     normalize_failure_class,
 )
 
@@ -104,7 +106,9 @@ def route_after_diagnose(state: SpiderForgeState) -> str:
 def build_pipeline(checkpointer=None):
     """建立 Spider Forge 流程；節點順序與所有分支集中在本函式。"""
 
-    builder = StateGraph(SpiderForgeState)
+    # input_schema：入口只收 ForgeInput 宣告的欄位（內部欄位由 prepare_request 初始化）。
+    # 刻意不設 output_schema——完整 state 對除錯與 checkpoint 續跑有用；要乾淨產出用 forge_result()。
+    builder = StateGraph(SpiderForgeState, input_schema=ForgeInput)
     for name, function in [
         ("prepare_request", prepare_request),
         ("recon", recon),
@@ -180,19 +184,19 @@ def forge_spider(
     *,
     max_retries: int = 2,
     run_id: str | None = None,
+    full_state: bool = False,
     **request: Any,
 ) -> dict[str, Any]:
-    """執行單一網址並回傳最終狀態，不負責批次紀錄或終端輸出。"""
+    """執行單一網址並回傳產出，不負責批次紀錄或終端輸出。
+
+    ``request`` 只接受 :class:`~spider_forge.state.ForgeInput` 的欄位
+    （target_schema / validation / topic_gate / sample_urls …）；內部欄位由
+    ``prepare_request`` 初始化。預設回傳 ``forge_result``（乾淨產出）；
+    除錯要看完整 state 傳 ``full_state=True``。
+    """
 
     thread_id = run_id or f"forge-{uuid.uuid4().hex[:8]}"
-    initial_state = {
-        **request,
-        "site_url": url,
-        "run_id": thread_id,
-        "max_retries": max_retries,
-        "retry_count": 0,
-        "error_signature_history": [],
-        "kimi_used": False,
-    }
+    initial_state = {**request, "site_url": url, "run_id": thread_id, "max_retries": max_retries}
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 60}
-    return dict(build_pipeline().invoke(initial_state, config=config))
+    final_state = dict(build_pipeline().invoke(initial_state, config=config))
+    return final_state if full_state else forge_result(final_state)

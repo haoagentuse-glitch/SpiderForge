@@ -151,10 +151,14 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 ### 階段 7 — state 分離（input / internal / output）
 **【對話中新發現，唯一採納的架構評語】** `SpiderForgeState` 單一 TypedDict 混了輸入
 （site_url/target_schema）、中間態（retry_count/recon_report）、產出。分離讓對外介面乾淨。
-- [ ] 7.1 拆出 input schema（使用者要給的）與 output schema（最終要回的），internal 留內部
-- [ ] 7.2 用 LangGraph 的 input/output schema 機制或 pydantic 分層
-- [ ] 7.3 驗收：pytest 綠；forge_spider 對外只收/回乾淨欄位
-- [ ] 7.4 commit：`refactor: 階段7 state 分離`
+- [x] 7.1 `state.py` 拆三層 TypedDict：`ForgeInput`(13 欄) / `ForgeInternal`(20) / `ForgeOutput`(9)，
+      `SpiderForgeState` 由三者繼承合併（42 欄，互斥且無遺漏；有測試鎖住這條不變式）
+- [x] 7.2 `StateGraph(SpiderForgeState, input_schema=ForgeInput)`：入口只收輸入欄位。
+      **刻意不設 output_schema**——完整 state 對除錯與 checkpoint 續跑有價值；乾淨產出走 `forge_result()`
+- [x] 7.3 `forge_spider` 預設回 `forge_result`（run_id + 產出欄位），`full_state=True` 取完整 state；
+      `forge_spider`/`batch.run_site` 不再手動塞 retry_count/kimi_used（本來就由 prepare_request 初始化）
+- [x] 7.4 驗收：**142 passed**（新增 3 個結構測試：三層分割、入口擋內部欄位、forge_result 只回產出）
+- [x] 7.5 commit：`refactor: 階段7 state 分離`
 
 ### 階段 8 — 全節點 class 化（最後）
 其餘 15 個 graph 節點照階段4 Recon 模式逐一 class 化。放最後：前面通用化/解耦會改動

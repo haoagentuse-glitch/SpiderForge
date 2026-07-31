@@ -59,10 +59,7 @@ def run_site(
     init = {
         **site,
         "max_retries": max_retries,
-        "retry_count": 0,
-        "error_signature_history": [],
-        "kimi_used": False,
-    }
+    }  # retry_count/kimi_used 等內部欄位由 prepare_request 初始化（見 state.ForgeInput）
     tid = run_id or f"{site.get('source_prefix', 'site')}-{uuid.uuid4().hex[:8]}"
     init["run_id"] = tid  # 候選隔離區用同一 run_id
     config = {"configurable": {"thread_id": tid}, "recursion_limit": 60}
