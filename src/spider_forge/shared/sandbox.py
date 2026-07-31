@@ -41,7 +41,7 @@ class SandboxResult:
 
 
 # 候選碼只能拿到這些「非機密」環境變數（remediation P0-3）。
-# ⚠️ 絕不含 DATABASE_URL / DEEPSEEK_API / KIMI_API / OLLAMA_HOST 等 secrets。
+# ⚠️ 絕不含 DATABASE_URL / *_API_KEY / OLLAMA_HOST 等 secrets。
 _SANDBOX_ENV_PASSTHROUGH = (
     "PATH", "SYSTEMROOT", "SYSTEMDRIVE", "TEMP", "TMP",
     "NUMBER_OF_PROCESSORS", "COMSPEC",

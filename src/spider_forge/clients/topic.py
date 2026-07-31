@@ -1,7 +1,7 @@
 """Gemini topic classifier client.
 
 Only sends a compact public-news feature (title + first 50 content characters).
-The API key is read from ``GEMINI_API_KEY``（舊名 ``LLM_API_KEY`` 仍相容）and is never included in prompts,
+The API key is read from ``GEMINI_API_KEY`` and is never included in prompts,
 results, exceptions, or the Scrapy sandbox environment.
 """
 

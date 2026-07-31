@@ -17,17 +17,11 @@ class ProviderSpec:
     """一個 LLM provider 的完整設定。"""
 
     name: str
-    api_key_env: str          # 金鑰的環境變數名（首選）
+    api_key_env: str          # 金鑰的環境變數名
     model: str
     base_url: str
     api_style: str            # "openai"（/chat/completions）| "gemini"（interactions）
     default_temperature: float = 0.0
-    # 相容用的舊變數名：首選讀不到時依序退回，讓既有 .env 不必立刻改。
-    api_key_env_aliases: tuple[str, ...] = ()
-
-    @property
-    def api_key_env_names(self) -> tuple[str, ...]:
-        return (self.api_key_env, *self.api_key_env_aliases)
 
 
 def _providers() -> dict[str, ProviderSpec]:
@@ -36,7 +30,6 @@ def _providers() -> dict[str, ProviderSpec]:
         "deepseek": ProviderSpec(
             name="deepseek",
             api_key_env="DEEPSEEK_API_KEY",
-            api_key_env_aliases=("DEEPSEEK_API",),
             model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
             base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
             api_style="openai",
@@ -45,7 +38,6 @@ def _providers() -> dict[str, ProviderSpec]:
         "kimi": ProviderSpec(
             name="kimi",
             api_key_env="KIMI_API_KEY",
-            api_key_env_aliases=("KIMI_API",),
             model=os.getenv("KIMI_MODEL", "kimi-k2.7-code-highspeed"),
             base_url=os.getenv("KIMI_BASE_URL", "https://api.moonshot.ai/v1"),
             api_style="openai",
@@ -54,7 +46,6 @@ def _providers() -> dict[str, ProviderSpec]:
         "gemini": ProviderSpec(
             name="gemini",
             api_key_env="GEMINI_API_KEY",
-            api_key_env_aliases=("LLM_API_KEY",),
             model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
             base_url=os.getenv(
                 "GEMINI_BASE_URL",
@@ -76,14 +67,12 @@ def get_provider(name: str) -> ProviderSpec:
 
 
 def resolve_api_key(spec: ProviderSpec) -> str:
-    """讀取金鑰（首選名 → 舊名），缺漏時明確報錯。
+    """讀取金鑰，缺漏時明確報錯。
 
     呼叫端捕捉 LookupError 後轉成自己的例外型別；金鑰讀取只有這一條路徑。
+    變數名的唯一標準是 `.env.example`。
     """
-    for name in spec.api_key_env_names:
-        key = os.getenv(name)
-        if key:
-            return key
-    raise LookupError(
-        f"{spec.name} 金鑰缺漏（env {' 或 '.join(spec.api_key_env_names)}）"
-    )
+    key = os.getenv(spec.api_key_env)
+    if not key:
+        raise LookupError(f"{spec.name} 金鑰缺漏（env {spec.api_key_env}）")
+    return key

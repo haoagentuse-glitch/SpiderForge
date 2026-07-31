@@ -199,7 +199,9 @@ README 重寫（原本 21 處 `app.spider_forge_system` 指令全失效、目錄
 
 **9.2 金鑰變數名對齊**：`.env.example` 用 `GEMINI_API_KEY` / `DEEPSEEK_API_KEY` / `KIMI_API_KEY`，
 但程式碼讀的是 `LLM_API_KEY` / `DEEPSEEK_API` / `KIMI_API`——照著填會拿不到金鑰。
-`ProviderSpec` 加 `api_key_env_aliases`，新名優先、舊名相容；三個 client 統一走 `resolve_api_key()`。
+程式碼改成讀 `.env.example` 的名字，三個 client 統一走 `resolve_api_key()`。
+（2026-08-01 追加：使用者裁決**不留舊名相容**——`.env.example` 是唯一標準，
+舊名一律移除，避免兩套命名並存又要維護。）
 
 **9.3 Phoenix 接入**（使用者決策：節點層+LLM 層都要；內容記錄可 env 關掉）
 

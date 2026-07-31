@@ -377,8 +377,8 @@ def t_gemini_client_uses_structured_output_and_parses_steps():
         captured.update(url=url, headers=headers, body=json, timeout=timeout)
         return FakeResponse()
 
-    previous = os.environ.get("LLM_API_KEY")
-    os.environ["LLM_API_KEY"] = "test-key-not-secret"
+    previous = os.environ.get("GEMINI_API_KEY")
+    os.environ["GEMINI_API_KEY"] = "test-key-not-secret"
     try:
         result = gemini_topic_client.classify_batch(
             [
@@ -393,9 +393,9 @@ def t_gemini_client_uses_structured_output_and_parses_steps():
         )
     finally:
         if previous is None:
-            os.environ.pop("LLM_API_KEY", None)
+            os.environ.pop("GEMINI_API_KEY", None)
         else:
-            os.environ["LLM_API_KEY"] = previous
+            os.environ["GEMINI_API_KEY"] = previous
     body = captured["body"]
     ok = (
         result["items"][0]["decision"] == "reject"
@@ -417,8 +417,8 @@ def t_gemini_client_does_not_retry_http_400():
         status_code = 400
         headers = {}
 
-    previous = os.environ.get("LLM_API_KEY")
-    os.environ["LLM_API_KEY"] = "test-key-not-secret"
+    previous = os.environ.get("GEMINI_API_KEY")
+    os.environ["GEMINI_API_KEY"] = "test-key-not-secret"
     try:
         try:
             gemini_topic_client.classify_batch(
@@ -431,9 +431,9 @@ def t_gemini_client_does_not_retry_http_400():
             raised = True
     finally:
         if previous is None:
-            os.environ.pop("LLM_API_KEY", None)
+            os.environ.pop("GEMINI_API_KEY", None)
         else:
-            os.environ["LLM_API_KEY"] = previous
+            os.environ["GEMINI_API_KEY"] = previous
     ok = raised and calls == [1]
     return ok, f"raised={raised} calls={calls}"
 

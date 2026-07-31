@@ -163,17 +163,13 @@ def _env_vars_read_by_code() -> set[str]:
             if isinstance(node, ast.keyword) and node.arg == "api_key_env":
                 if isinstance(node.value, ast.Constant):
                     read.add(node.value.value)
-            if isinstance(node, ast.keyword) and node.arg == "api_key_env_aliases":
-                for element in getattr(node.value, "elts", []):
-                    if isinstance(element, ast.Constant):
-                        read.add(element.value)
     return read
 
 
 def t_env_example_has_no_dead_variables():
     """.env.example 不得出現程式碼不讀的變數。
 
-    踩過的坑：example 寫 GEMINI_API_KEY 但程式碼讀 LLM_API_KEY，照著填會拿不到金鑰
+    踩過的坑：example 的變數名與程式碼實際讀的名字不一致，照著填會拿不到金鑰
     且完全沒有錯誤提示。明確標為「預留」的例外列在 RESERVED。
     """
     import re

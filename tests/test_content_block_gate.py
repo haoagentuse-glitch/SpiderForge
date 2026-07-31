@@ -268,7 +268,7 @@ def t_gemini_page_client_parses_structured_verdict():
 
     import os
 
-    os.environ.setdefault("LLM_API_KEY", "test-key")
+    os.environ.setdefault("GEMINI_API_KEY", "test-key")
     result = gemini_page_client.classify_page(
         ["拒絕存取", "verify you are human"],
         post_fn=lambda *a, **k: FakeResp(),

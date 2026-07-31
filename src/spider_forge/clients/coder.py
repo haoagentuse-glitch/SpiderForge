@@ -5,8 +5,8 @@ DeepSeek 主力；Kimi 作為重試耗盡前的最後一搏（使用者指定的
 「程式碼字串」不是結構化 JSON，所以走純文字 completion（不強制 json_schema）。
 
 環境變數（皆在 workspace/.env）：
-  DEEPSEEK_API_KEY  初次產碼與一般修復所需（舊名 DEEPSEEK_API 仍相容）
-  KIMI_API_KEY      只有進入最後一輪 Kimi 修復時才需要（舊名 KIMI_API 仍相容）
+  DEEPSEEK_API_KEY  初次產碼與一般修復所需
+  KIMI_API_KEY      只有進入最後一輪 Kimi 修復時才需要
   DEEPSEEK_BASE_URL / DEEPSEEK_MODEL   可覆蓋（預設 https://api.deepseek.com / deepseek-chat）
   KIMI_BASE_URL / KIMI_MODEL           可覆蓋（預設 https://api.moonshot.cn/v1 / moonshot-v1-32k）
 """
@@ -59,11 +59,8 @@ def complete(
         raise CoderError(str(exc)) from exc
     temp = spec.default_temperature if temperature is None else temperature
     default_max_tokens = "8000" if spec.name == "kimi" else "5000"
-    # 其餘變數一律 SPIDERFORGE_ 前綴；SPIDER_FORGE_ 是舊名，保留相容。
     max_tokens = int(
-        os.getenv("SPIDERFORGE_MAX_COMPLETION_TOKENS")
-        or os.getenv("SPIDER_FORGE_MAX_COMPLETION_TOKENS")
-        or default_max_tokens
+        os.getenv("SPIDERFORGE_MAX_COMPLETION_TOKENS", default_max_tokens)
     )
 
     messages = ([{"role": "system", "content": system}] if system else []) + [

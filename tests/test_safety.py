@@ -17,15 +17,15 @@ from spider_forge.shared.sandbox import sandbox_env
 
 batch_module = importlib.import_module("spider_forge.runs.batch")
 
-_SECRET_KEYS = ("DATABASE_URL", "DEEPSEEK_API", "KIMI_API", "OLLAMA_HOST",
-                "LLM_API_KEY", "POSTGRES_PASSWORD", "FINMIND_TOKEN")
+_SECRET_KEYS = ("DATABASE_URL", "DEEPSEEK_API_KEY", "KIMI_API_KEY", "OLLAMA_HOST",
+                "GEMINI_API_KEY", "POSTGRES_PASSWORD", "FINMIND_TOKEN")
 
 
 def t_sandbox_does_not_inherit_secrets():
     # 先確保這些 secret 真的在本進程環境裡（否則測試無效）
     os.environ.setdefault("DATABASE_URL", "postgresql://u:p@h/db")
-    os.environ.setdefault("DEEPSEEK_API", "sk-deepseek-should-not-leak")
-    os.environ.setdefault("KIMI_API", "sk-kimi-should-not-leak")
+    os.environ.setdefault("DEEPSEEK_API_KEY", "sk-deepseek-should-not-leak")
+    os.environ.setdefault("KIMI_API_KEY", "sk-kimi-should-not-leak")
 
     env = sandbox_env(["news.cnyes.com", "api.cnyes.com"])
     leaked = [k for k in _SECRET_KEYS if k in env]
@@ -63,7 +63,7 @@ def t_docker_candidate_uses_stdin_readonly_tmpfs_and_streams_output():
         return Proc()
 
     os.environ["DATABASE_URL"] = "postgresql://must-not-leak"
-    os.environ["LLM_API_KEY"] = "must-not-leak"
+    os.environ["GEMINI_API_KEY"] = "must-not-leak"
     previous_docker_bin = os.environ.get("SPIDERFORGE_DOCKER_BIN")
     os.environ["SPIDERFORGE_DOCKER_BIN"] = "docker"
     original = runner_module.subprocess.run

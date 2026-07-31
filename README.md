@@ -118,9 +118,9 @@ runtime/
 
 | 變數 | 用途 |
 |---|---|
-| `DEEPSEEK_API` | 初次產碼與一般修復 |
-| `KIMI_API` | 只有進入最後一輪 Kimi 修復時才需要 |
-| `LLM_API_KEY` | Gemini（主題閘門、內容真偽確認）|
+| `DEEPSEEK_API_KEY` | 初次產碼與一般修復 |
+| `KIMI_API_KEY` | 只有進入最後一輪 Kimi 修復時才需要 |
+| `GEMINI_API_KEY` | Gemini（主題閘門、內容真偽確認）|
 | `OLLAMA_HOST` | 選用；預設 `http://localhost:11434` |
 
 常用行為開關（全部可省略）：
