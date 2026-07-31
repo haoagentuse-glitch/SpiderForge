@@ -114,14 +114,22 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 
 ### 階段 5 — 領域耦合抽離（通用化：從台灣財經專用 → 可換設定）
 把「這是台灣財經新聞爬蟲」的硬編碼抽成可替換設定 —— 最貼近「通用函式」目標的一塊。
-- [ ] 5.1 主題分類去領域化：`shared/topic.py` 的 `LABELS=("finance","public_policy")`、
-      `DEFAULT_CONFIG mode="enforce"`、`clients/topic.py`/`page.py` 的財經/政策 prompt
-      → 抽成可注入領域設定；預設不再開箱就被財經 gate 卡
-- [ ] 5.2 topic/strategy/diagnose 內嵌 prompt 搬進 `prompts/`（補完 3b 留下的 prompts/ 目錄）
-- [ ] 5.3 `request_identity.py` 的 zh-TW Accept-Language / Windows UA / 課程字樣 → 可設定
-- [ ] 5.4 `site_queue.yaml` 台灣財經站清單 → 標為範例，不當核心預設
-- [ ] 5.5 驗收：pytest 綠；關掉 topic gate 後能跑非財經站（最小示範）
-- [ ] 5.6 commit：`refactor: 階段5 領域耦合抽離`
+- [x] 5.1 **topic gate 預設不強制**：`DEFAULT_CONFIG mode` enforce→**off**（env `SPIDERFORGE_TOPIC_MODE` 可覆蓋）。
+      通用套件開箱不再套財經/政策過濾；要用的人顯式傳 `topic_gate={"mode":"enforce"}`。commit `c784651`
+- [x] 5.3 `request_identity.py`：purpose / UA / Accept-Language 改 env 可覆蓋（預設值不變，
+      保留「單一固定不輪替、不做指紋偽裝」的硬界線）。commit `e882635`
+- [~] 5.2 topic/strategy/diagnose 內嵌 prompt 搬進 `prompts/` — **降為可選**（理由見下）
+- [ ] 5.4 `site_queue.yaml` 台灣財經站清單 → 標為範例，不當核心預設（未做，低風險小事）
+- [x] 5.5 驗收：pytest 138 passed / 1 skipped
+
+> **決策（2026-07-31，指揮官判斷、使用者授權裁決）：LABELS/Gemini 領域可換 不做。**
+> 預設改 off 後，此項邊際價值大幅下降——開箱已不會撞財經 gate，想換領域者本就需自行配置，
+> 「傳自訂 label」只是便利性、非通用性。且它要跨 clients/topic.py + shared/topic.py 傳領域設定，
+> 設計密集、收益低。**反面警告**：不要把預設改回 `on`——通用爬蟲生成器不該預設替使用者決定
+> 「什麼主題才算合格」，那是原專案的業務規則，不是通用需求。
+>
+> **查證紀錄**：`runtime/models/` 為空、無 `active.json`，artifact(BGE) provider 目前**無訓練檔可用**，
+> 實際運作的是 Gemini path。artifact 的 numpy 評分程式碼保留但不會執行；換領域若要用 artifact 需重訓。
 
 ### 階段 6 — crawler_runtime 解耦（拔外部執行引擎依賴）
 **【對話中新發現】** 離線重播(fixture_test) 的執行引擎跑在外部 `crawler_runtime` 子程序
