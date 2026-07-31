@@ -1,7 +1,7 @@
 """Gemini topic classifier client.
 
 Only sends a compact public-news feature (title + first 50 content characters).
-The API key is read from ``LLM_API_KEY`` and is never included in prompts,
+The API key is read from ``GEMINI_API_KEY``（舊名 ``LLM_API_KEY`` 仍相容）and is never included in prompts,
 results, exceptions, or the Scrapy sandbox environment.
 """
 
@@ -14,8 +14,9 @@ from typing import Callable
 
 import requests
 
+from ..observability import llm_span
 from .env import load_env
-from .registry import get_provider
+from .registry import get_provider, resolve_api_key
 
 _SPEC = get_provider("gemini")
 API_URL = _SPEC.base_url
@@ -125,9 +126,10 @@ def classify_batch(
     ]
 
     load_env()
-    api_key = os.getenv(_SPEC.api_key_env)
-    if not api_key:
-        raise GeminiTopicError(f"Gemini 金鑰缺漏（env {_SPEC.api_key_env}）")
+    try:
+        api_key = resolve_api_key(_SPEC)
+    except LookupError as exc:
+        raise GeminiTopicError(str(exc)) from exc
 
     body = {
         "model": model,
@@ -144,57 +146,59 @@ def classify_batch(
         },
     }
 
-    response = None
-    delay = 2.0
-    for attempt in range(max_retries + 1):
-        try:
-            response = post_fn(
-                API_URL,
-                headers={
-                    "x-goog-api-key": api_key,
-                    "Content-Type": "application/json",
-                },
-                json=body,
-                timeout=timeout_s,
-            )
-            if response.status_code < 400:
-                break
-            if response.status_code not in TRANSIENT_HTTP:
-                raise GeminiTopicError(f"Gemini HTTP {response.status_code}")
-            if attempt == max_retries:
-                raise GeminiTopicError(
-                    f"Gemini HTTP {response.status_code}，重試耗盡"
-                )
-            retry_after = response.headers.get("Retry-After")
+    with llm_span("gemini", model, prompt=_prompt(compact_rows), purpose="topic") as span:
+        response = None
+        delay = 2.0
+        for attempt in range(max_retries + 1):
             try:
-                wait = float(retry_after) if retry_after else delay
-            except (TypeError, ValueError):
-                wait = delay
-            sleep_fn(min(wait, 60.0))
-            delay *= 2
-        except requests.RequestException as exc:
-            if attempt == max_retries:
-                raise GeminiTopicError("Gemini 連線失敗，重試耗盡") from exc
-            sleep_fn(delay)
-            delay *= 2
+                response = post_fn(
+                    API_URL,
+                    headers={
+                        "x-goog-api-key": api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json=body,
+                    timeout=timeout_s,
+                )
+                if response.status_code < 400:
+                    break
+                if response.status_code not in TRANSIENT_HTTP:
+                    raise GeminiTopicError(f"Gemini HTTP {response.status_code}")
+                if attempt == max_retries:
+                    raise GeminiTopicError(
+                        f"Gemini HTTP {response.status_code}，重試耗盡"
+                    )
+                retry_after = response.headers.get("Retry-After")
+                try:
+                    wait = float(retry_after) if retry_after else delay
+                except (TypeError, ValueError):
+                    wait = delay
+                sleep_fn(min(wait, 60.0))
+                delay *= 2
+            except requests.RequestException as exc:
+                if attempt == max_retries:
+                    raise GeminiTopicError("Gemini 連線失敗，重試耗盡") from exc
+                sleep_fn(delay)
+                delay *= 2
 
-    if response is None:
-        raise GeminiTopicError("Gemini 未回傳 response")
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise GeminiTopicError("Gemini 回應不是合法 JSON") from exc
-    if payload.get("status") != "completed":
-        raise GeminiTopicError(
-            f"Gemini interaction 未完成：{payload.get('status', 'unknown')}"
-        )
-    try:
-        parsed = json.loads(_extract_output_text(payload))
-    except json.JSONDecodeError as exc:
-        raise GeminiTopicError("Gemini Structured Output 不是合法 JSON") from exc
-    return {
-        "model": model,
-        "items": parsed.get("items") or [],
-        "usage": payload.get("usage") or {},
-        "interaction_id": payload.get("id"),
-    }
+        if response is None:
+            raise GeminiTopicError("Gemini 未回傳 response")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise GeminiTopicError("Gemini 回應不是合法 JSON") from exc
+        if payload.get("status") != "completed":
+            raise GeminiTopicError(
+                f"Gemini interaction 未完成：{payload.get('status', 'unknown')}"
+            )
+        try:
+            parsed = json.loads(_extract_output_text(payload))
+        except json.JSONDecodeError as exc:
+            raise GeminiTopicError("Gemini Structured Output 不是合法 JSON") from exc
+        span.record_output(parsed, payload.get("usage") or {})
+        return {
+            "model": model,
+            "items": parsed.get("items") or [],
+            "usage": payload.get("usage") or {},
+            "interaction_id": payload.get("id"),
+        }

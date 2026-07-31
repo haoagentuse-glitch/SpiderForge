@@ -17,13 +17,17 @@ dependencies = [
     "scrapy-playwright>=0.0.48",
     "tzdata>=2025.2",
     "pydantic>=2",
-    "arize-phoenix-otel>=0.16.0",
-    "openinference-instrumentation-langchain",
-    "arize-phoenix-client",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=8.4,<9"]
+# 可觀測性是旁掛層：不裝也能跑（setup_tracing 直接 no-op）。
+# 安裝：uv sync --extra observability
+observability = [
+    "arize-phoenix-otel>=0.16.0",
+    "openinference-instrumentation-langchain",
+    "arize-phoenix-client",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

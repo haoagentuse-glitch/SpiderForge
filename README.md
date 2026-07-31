@@ -175,6 +175,38 @@ print(result["status"], result.get("spider_path"))
 `recon`、`evidence` 會接觸真實網站，`strategy` 可能使用 Ollama，`generate` 會使用
 DeepSeek；`preflight` 與 `fixture` 是離線檢查。
 
+## 可觀測性（Arize Phoenix，選用）
+
+安裝並啟動 Phoenix：
+
+```bash
+uv sync --extra observability
+```
+
+```bash
+docker compose -f Phoenix/compose.yaml up -d
+```
+
+在 `.env` 設 `PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces`,之後
+`spider_forge run` 就會把 trace 送進 <http://localhost:6006>。**沒設這個變數時完全不啟用**
+（不 import Phoenix、零開銷），所以套件不裝觀測套件也照樣跑。
+
+看得到的東西：
+
+- 每個節點一個 span（耗時、進出 state、失敗的例外堆疊）—— 由
+  `openinference-instrumentation-langchain` 自動產生，**節點程式碼不需要任何改動**，
+  所以「加新節點」仍然只要新增一檔。
+- 每次 LLM 呼叫一個子 span（provider、model、prompt、回覆、token、重試次數）——
+  這些呼叫是 clients 層自己用 requests 打的，instrumentor 抓不到，所以手動包在
+  `observability.llm_span` 裡。
+
+| 變數 | 預設 | 說明 |
+|---|---|---|
+| `PHOENIX_COLLECTOR_ENDPOINT` | 無 | 沒設就不啟用追蹤 |
+| `PHOENIX_PROJECT` | `spider_forge` | Phoenix 專案名 |
+| `SPIDERFORGE_TRACE_CONTENT` | `1` | 設 `0` 只記 token/耗時，不送 prompt 與 state 內容 |
+| `SPIDERFORGE_TRACE_MAX_CHARS` | `4000` | 單一欄位長度上限（state 帶 DOM，不設限會爆量）|
+
 ## 證據與執行指標
 
 `EvidencePack.replay_exchange` 保存已遮密的請求（method/URL/headers/body）與

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .observability import setup_tracing
 from .pipeline import build_pipeline
 from .runs.batch import run_batch, run_one
 from .runs.ledger import summarize
@@ -231,6 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.reconfigure(encoding="utf-8")
     parser = build_parser()
     args = parser.parse_args(argv)
+    # 有設 PHOENIX_COLLECTOR_ENDPOINT 才啟用追蹤；沒設是完全的 no-op。
+    setup_tracing()
     try:
         return int(args.handler(args))
     except (FileNotFoundError, ValueError) as exc:

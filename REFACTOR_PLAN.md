@@ -190,6 +190,44 @@ schema（`_STRATEGY_SCHEMA`/`_DIAGNOSE_SCHEMA`/`DEFAULT_TARGET_SCHEMA`）。沿�
 - Windows/PowerShell；檢視含中文 JSON 用 `python -X utf8 -c` 印，別直接 Read。
 - 活站/Docker 測試依既有決定由使用者手動執行；本計畫的自動驗收以離線 `pytest` 為準。
 
+### 階段 9 — 目錄健檢 + Phoenix 可觀測性（2026-08-01）
+
+**9.1 目錄健檢與清理**：刪 `_history/`（母專案歷史）、`tests/manual` 的 walkthrough 紀錄與
+`review_candidates/` 產物、`Dockerfile`（整份綁死母專案佈局、已無法 build）、
+`requirements*.txt`（改用 uv）、`runtime/` 舊執行紀錄與 `src/spider_forge/runtime` 殘留。
+README 重寫（原本 21 處 `app.spider_forge_system` 指令全失效、目錄樹是 stages/ 時代的）。
+
+**9.2 金鑰變數名對齊**：`.env.example` 用 `GEMINI_API_KEY` / `DEEPSEEK_API_KEY` / `KIMI_API_KEY`，
+但程式碼讀的是 `LLM_API_KEY` / `DEEPSEEK_API` / `KIMI_API`——照著填會拿不到金鑰。
+`ProviderSpec` 加 `api_key_env_aliases`，新名優先、舊名相容；三個 client 統一走 `resolve_api_key()`。
+
+**9.3 Phoenix 接入**（使用者決策：節點層+LLM 層都要；內容記錄可 env 關掉）
+
+- 新增 `observability/`：`setup_tracing()`（沒設 `PHOENIX_COLLECTOR_ENDPOINT` 就完全 no-op）
+  + `llm_span()`（手動包 LLM 呼叫）。依賴移到 `[project.optional-dependencies] observability`。
+- **節點層零改動**：實測確認 `openinference-instrumentation-langchain` 會自動為每個
+  LangGraph 節點產生 CHAIN span，含 `input.value`/`output.value`/`langgraph_node` metadata，
+  失敗節點還有 `status=ERROR` + exception 堆疊。所以「加新節點自動就有觀測」。
+- **LLM 層手動包**：clients 是自己用 requests 打 API（不是 LangChain 的 LLM 類別），
+  instrumentor 抓不到 → `coder` / `judge` / `topic` / `page` 四處包 `llm_span`。
+- **截斷**：node span 的 input/output 是完整 state（含 DOM 與 evidence_pack），不設限會爆量。
+  OpenInference 的 `TraceConfig` 只有「全記/全不記」沒有長度上限 → 改用 OTel 標準
+  `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`（由 `SPIDERFORGE_TRACE_MAX_CHARS` 設定，預設 4000）。
+  第一版寫成事後包 exporter，實測 `BatchSpanProcessor.span_exporter` 無 setter 而失敗，已改掉。
+
+**9.4 驗收（實跑）**
+
+- **147 passed**（142 + 5 個新的觀測層測試：關閉時 no-op、內容開關、截斷、client 可 import）
+- 端到端：起假 OTLP collector，確認 trace 真的送達（收到批次、511～17913 bytes）
+- 截斷實測：上限設 300 時，所有 `input.value`/`output.value` 皆 ≤300
+- ⚠️ 實測副產品：對 phoenix 的 provider 呼叫 `add_span_processor()` 是**取代**不是追加
+  （第一次驗證腳本因此誤判 FAIL）——已寫進 `tracing.py` 註解
+
+> 待辦（不阻塞）：`.env.example` 仍有四個程式碼沒讀的變數（`OPENAI_*`、
+> `PRIMARY_LLM_PROVIDER`、`FALLBACK_LLM_PROVIDER`、`DATABASE_URL`），已在檔內標註。
+> 要不要真的接上（例如 registry 加 openai provider）由使用者決定。
+> 容器化：舊 Dockerfile 已刪，要重建的話與 Phoenix compose 一起設計。
+
 ## 5.5 核心價值驗收（實測，2026-08-01）
 
 計畫開頭那句「加一個節點只要新增一檔 + pipeline 拼裝一行」有沒有做到——**實跑演練過**：

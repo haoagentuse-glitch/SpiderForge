@@ -1,7 +1,7 @@
 """Gemini page-authenticity classifier（spec v2 §3.3 content-vs-block）。
 
 只在確定性規則抓不到、但可疑的情況下才呼叫（保護額度）：判斷抓到的「文章」其實是不是
-挑戰頁 / 錯誤頁 / 空殼頁。只送每筆內容前 200 字的精簡特徵，金鑰讀 ``LLM_API_KEY``，
+挑戰頁 / 錯誤頁 / 空殼頁。只送每筆內容前 200 字的精簡特徵，金鑰讀 ``GEMINI_API_KEY``，
 永不進 prompt、結果、例外或沙盒環境。結構與重試邏輯沿用已驗證的 gemini_topic_client。
 """
 
@@ -14,8 +14,9 @@ from typing import Callable
 
 import requests
 
+from ..observability import llm_span
 from .env import load_env
-from .registry import get_provider
+from .registry import get_provider, resolve_api_key
 from .topic import (
     API_URL,
     TRANSIENT_HTTP,
@@ -69,9 +70,10 @@ def classify_page(
         raise ValueError("classify_page 需要至少一筆非空 content_lead")
 
     load_env()
-    api_key = os.getenv(_SPEC.api_key_env)
-    if not api_key:
-        raise GeminiPageError(f"Gemini 金鑰缺漏（env {_SPEC.api_key_env}）")
+    try:
+        api_key = resolve_api_key(_SPEC)
+    except LookupError as exc:
+        raise GeminiPageError(str(exc)) from exc
 
     body = {
         "model": model,
@@ -85,48 +87,50 @@ def classify_page(
         },
     }
 
-    response = None
-    delay = 2.0
-    for attempt in range(max_retries + 1):
-        try:
-            response = post_fn(
-                API_URL,
-                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-                json=body,
-                timeout=timeout_s,
-            )
-            if response.status_code < 400:
-                break
-            if response.status_code not in TRANSIENT_HTTP:
-                raise GeminiPageError(f"Gemini HTTP {response.status_code}")
-            if attempt == max_retries:
-                raise GeminiPageError(f"Gemini HTTP {response.status_code}，重試耗盡")
-            sleep_fn(min(delay, 30.0))
-            delay *= 2
-        except requests.RequestException as exc:
-            if attempt == max_retries:
-                raise GeminiPageError("Gemini 連線失敗，重試耗盡") from exc
-            sleep_fn(delay)
-            delay *= 2
+    with llm_span("gemini", model, prompt=_prompt(leads), purpose="page_authenticity") as span:
+        response = None
+        delay = 2.0
+        for attempt in range(max_retries + 1):
+            try:
+                response = post_fn(
+                    API_URL,
+                    headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                    json=body,
+                    timeout=timeout_s,
+                )
+                if response.status_code < 400:
+                    break
+                if response.status_code not in TRANSIENT_HTTP:
+                    raise GeminiPageError(f"Gemini HTTP {response.status_code}")
+                if attempt == max_retries:
+                    raise GeminiPageError(f"Gemini HTTP {response.status_code}，重試耗盡")
+                sleep_fn(min(delay, 30.0))
+                delay *= 2
+            except requests.RequestException as exc:
+                if attempt == max_retries:
+                    raise GeminiPageError("Gemini 連線失敗，重試耗盡") from exc
+                sleep_fn(delay)
+                delay *= 2
 
-    if response is None:
-        raise GeminiPageError("Gemini 未回傳 response")
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise GeminiPageError("Gemini 回應不是合法 JSON") from exc
-    if payload.get("status") != "completed":
-        raise GeminiPageError(f"Gemini interaction 未完成：{payload.get('status', 'unknown')}")
-    try:
-        parsed = json.loads(_extract_output_text(payload))
-    except json.JSONDecodeError as exc:
-        raise GeminiPageError("Gemini Structured Output 不是合法 JSON") from exc
-    verdict = parsed.get("verdict")
-    if verdict not in {"content", "block"}:
-        raise GeminiPageError(f"verdict 不合法：{verdict!r}")
-    return {
-        "verdict": verdict,
-        "reason": str(parsed.get("reason") or "")[:120],
-        "usage": payload.get("usage") or {},
-        "interaction_id": payload.get("id"),
-    }
+        if response is None:
+            raise GeminiPageError("Gemini 未回傳 response")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise GeminiPageError("Gemini 回應不是合法 JSON") from exc
+        if payload.get("status") != "completed":
+            raise GeminiPageError(f"Gemini interaction 未完成：{payload.get('status', 'unknown')}")
+        try:
+            parsed = json.loads(_extract_output_text(payload))
+        except json.JSONDecodeError as exc:
+            raise GeminiPageError("Gemini Structured Output 不是合法 JSON") from exc
+        verdict = parsed.get("verdict")
+        if verdict not in {"content", "block"}:
+            raise GeminiPageError(f"verdict 不合法：{verdict!r}")
+        span.record_output(parsed, payload.get("usage") or {})
+        return {
+            "verdict": verdict,
+            "reason": str(parsed.get("reason") or "")[:120],
+            "usage": payload.get("usage") or {},
+            "interaction_id": payload.get("id"),
+        }

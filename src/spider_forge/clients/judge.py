@@ -19,6 +19,8 @@ from typing import Any
 
 import requests
 
+from ..observability import llm_span
+
 OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 DEFAULT_MODEL = os.environ.get("SPIDERFORGE_JUDGE_MODEL", "qwen2.5:7b-instruct")
 
@@ -51,14 +53,27 @@ def judge(
         "stream": False,
         "options": {"num_ctx": num_ctx, "temperature": 0},
     }
-    try:
-        resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=timeout_s)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        raise JudgeError(f"Ollama 連線失敗（{OLLAMA_URL}）：{e}") from e
+    with llm_span(
+        "ollama", payload["model"], prompt=user, system=system, purpose="judge"
+    ) as span:
+        try:
+            resp = requests.post(
+                f"{OLLAMA_URL}/api/chat", json=payload, timeout=timeout_s
+            )
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            raise JudgeError(f"Ollama 連線失敗（{OLLAMA_URL}）：{e}") from e
 
-    content = resp.json().get("message", {}).get("content", "")
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError as e:
-        raise JudgeError(f"模型回傳非合法 JSON：{content!r}") from e
+        body = resp.json()
+        content = body.get("message", {}).get("content", "")
+        span.record_output(
+            content,
+            {
+                "prompt_tokens": body.get("prompt_eval_count"),
+                "completion_tokens": body.get("eval_count"),
+            },
+        )
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            raise JudgeError(f"模型回傳非合法 JSON：{content!r}") from e
