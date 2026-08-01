@@ -272,7 +272,11 @@ optional 後沒重新 lock，CI 會踩到）。
 
 **10.5 驗收**：150 passed；CI 的四個步驟在本機逐一跑過（compileall / pytest /
 `python -m pipelines.cli --help` / build_pipeline 得到 19 節點）。
-⚠️ 未驗證：Linux runner 上的實際行為——本機只有 Windows，第一次 push 後看 Actions 才算數。
+
+**10.6 已推上 GitHub 並實跑 CI**（run `30683508703`，ubuntu-latest，**19 秒 success**）：
+`150 passed in 3.14s`、`usage: spider-forge ...`、`nodes: 19` 都在 log 裡。
+先前標註的「Linux runner 未驗證」至此**解除**——跨平台無差異。
+遠端分支：`main`（基準快照 `e781f09`）、`refactor/modular-nodes`（本次重構，20 commit）。
 
 ## 5.5 核心價值驗收（實測，2026-08-01）
 
