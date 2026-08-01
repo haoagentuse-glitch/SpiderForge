@@ -7,7 +7,7 @@ import re
 
 from ..config import FINAL_REPAIR_PROVIDER, REPAIR_PROVIDER
 from ..state import SpiderForgeState, normalize_failure_class
-from .generation import _contract, _safe_generate
+from .generation import _contract, _safe_generate, persist_candidate
 from .materials import compile_generation_materials
 from ..schemas import DIAGNOSE_SCHEMA
 
@@ -360,6 +360,7 @@ def repair_code(state: SpiderForgeState) -> dict:
         "spider_code": code or state.get("spider_code", ""),
         "generation_error": error,
         "status": "testing",
+        **persist_candidate(state, code or ""),
     }
 
 
@@ -370,6 +371,7 @@ def repair_code_kimi(state: SpiderForgeState) -> dict:
         "generation_error": error,
         "kimi_used": True,
         "status": "testing",
+        **persist_candidate(state, code or ""),
     }
 
 

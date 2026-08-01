@@ -277,9 +277,45 @@ def t_graph_routes_preflight_and_fixture_before_live_crawl():
     )
 
 
+def t_generated_code_is_persisted_before_the_gates_run():
+    """產碼當下就落檔，不是等 fixture_test。
+
+    踩過的坑：BBC 那次卡在 generation_preflight，候選碼因此從未落檔——最需要
+    看程式碼的時候（產碼失敗）反而只剩三個錯誤代碼，得重跑一次才拿得到。
+    """
+    import tempfile
+    from spider_forge.shared import generation
+
+    original = generation._safe_generate
+    generation._safe_generate = lambda prompt, provider: (_GOOD_CANDIDATE, None)
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            from spider_forge.output import artifacts
+
+            original_dir = artifacts._CANDIDATE_DIR
+            artifacts._CANDIDATE_DIR = Path(temp_dir)
+            try:
+                update = generation.generate_spider({
+                    "run_id": "persist-test",
+                    "source_prefix": "example_com",
+                    "site_name": "Example",
+                    "target_schema": {"fields": {}, "source_type": "media"},
+                    "evidence_pack": {},
+                })
+                path = Path(update.get("candidate_path", ""))
+                ok = bool(update.get("candidate_path")) and path.is_file()
+                same = path.read_text(encoding="utf-8") == _GOOD_CANDIDATE if ok else False
+            finally:
+                artifacts._CANDIDATE_DIR = original_dir
+    finally:
+        generation._safe_generate = original
+    return ok and same, f"candidate_path={update.get('candidate_path')} 內容一致={same}"
+
+
 TESTS = [
     t_material_compiler_removes_dom_noise_and_unselected_sources,
     t_fixture_runner_executes_candidate_in_subprocess,
+    t_generated_code_is_persisted_before_the_gates_run,
     t_pure_api_fixture_does_not_require_html_detail_callbacks,
     t_fixture_failure_is_diagnosed_without_judge_call,
     t_graph_routes_preflight_and_fixture_before_live_crawl,

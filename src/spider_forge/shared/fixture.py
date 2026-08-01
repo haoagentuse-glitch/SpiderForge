@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 from typing import Any
 
 from ..output import artifacts
@@ -137,10 +138,15 @@ def build_fixture_spec(state: SpiderForgeState) -> dict[str, Any]:
 def fixture_test(state: SpiderForgeState) -> dict[str, Any]:
     """在獨立 crawler runtime 以保存 response 執行候選 callback。"""
     run_id = state.get("run_id") or uuid.uuid4().hex[:8]
-    candidate = artifacts.write_candidate(
-        run_id,
-        state["source_prefix"],
-        state.get("spider_code", ""),
+    # 候選碼在 generate/repair 當下就落檔了；這裡沿用，沒有才補寫
+    # （讓 fixture_test 仍能被單獨呼叫，見 tests/manual/）。
+    existing = state.get("candidate_path")
+    candidate = (
+        Path(existing)
+        if existing and Path(existing).is_file()
+        else artifacts.write_candidate(
+            run_id, state["source_prefix"], state.get("spider_code", "")
+        )
     )
     fixture = build_fixture_spec(state)
     if not fixture["listing"]["body"]:

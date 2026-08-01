@@ -232,6 +232,24 @@ def _generation_prompt(state: SpiderForgeState) -> tuple[str, dict]:
     return prompt, materials
 
 
+def persist_candidate(state: SpiderForgeState, code: str) -> dict:
+    """把剛產出的碼寫進隔離區，回傳要合併進 state 的欄位。
+
+    **產碼當下就落檔**（不是等 fixture_test）——否則產碼失敗時最需要看的東西
+    正好看不到：preflight 只回錯誤代碼，人工除錯得重跑一次才拿得到程式碼。
+    """
+    if not code:
+        return {}
+    from ..output import artifacts
+
+    path = artifacts.write_candidate(
+        state.get("run_id") or "adhoc",
+        state.get("source_prefix") or "candidate",
+        code,
+    )
+    return {"candidate_path": str(path)}
+
+
 def generate_spider(state: SpiderForgeState) -> dict:
     prompt, materials = _generation_prompt(state)
     code, error = _safe_generate(prompt, GENERATION_PROVIDER)
@@ -240,6 +258,7 @@ def generate_spider(state: SpiderForgeState) -> dict:
         "generation_error": error,
         "generation_materials": materials.get("material_budget") or {},
         "status": "testing",
+        **persist_candidate(state, code or ""),
     }
 
 

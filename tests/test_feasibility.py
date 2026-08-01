@@ -356,12 +356,52 @@ def t_escalate_marks_topic_provider_outage_distinctly():
     return ok, f"failure_class={result.get('failure_class')}"
 
 
+def t_auth_blocked_entry_is_not_reported_as_discovery_empty():
+    """401/403 擋住時要說是授權問題，不能報成「找不到文章連結」。
+
+    Reuters 實例：整站回 401，什麼都看不到，卻被歸成 discovery_empty——
+    讀死信的人會以為是入口 URL 給錯，實際上是根本進不去。兩者處置完全不同。
+    """
+    base = {
+        "site_url": "https://paywalled.example.com/markets/",
+        "source_prefix": "paywalled",
+        "run_id": "test-auth-0001",
+        "validation": {"allowed_domains": ["paywalled.example.com"]},
+    }
+    blocked = graph.feasibility_triage({
+        **base,
+        "recon_report": {
+            "http_status": 401,
+            "soft_block_detected": False,
+            "access_assessment": "browser_session_required",
+            "api_candidates": [], "feed_candidates": [], "link_samples": [],
+            "http_entry_sample": {"status": 401, "link_samples": []},
+        },
+    })["feasibility"]
+    reachable = graph.feasibility_triage({
+        **base,
+        "recon_report": {
+            "http_status": 200,
+            "soft_block_detected": False,
+            "api_candidates": [], "feed_candidates": [], "link_samples": [],
+            "http_entry_sample": {"status": 200, "link_samples": []},
+        },
+    })["feasibility"]
+    return (
+        blocked["class"] == "KILL_auth_required"
+        and "401" in blocked["reason"]
+        # 進得去但沒連結，仍然是 discovery_empty（不能一律改判）
+        and reachable["class"] == "KILL_discovery_empty"
+    ), f"blocked={blocked['class']} reachable={reachable['class']}"
+
+
 TESTS = [
     t_policy_kill_classifies_and_routes_to_escalate,
     t_kill_route_structurally_never_reaches_generation,
     t_policy_kill_escalates_and_writes_dead_letter_without_touching_generate,
     t_clean_api_evidence_is_feasible_and_routes_to_strategy,
     t_discovery_empty_kills_and_writes_dead_letter,
+    t_auth_blocked_entry_is_not_reported_as_discovery_empty,
     t_discovery_not_empty_when_recon_itself_failed,
     t_sample_urls_override_prevents_false_discovery_kill,
     t_signature_required_kills_when_only_locked_post_and_no_fallback,

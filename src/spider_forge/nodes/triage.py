@@ -19,6 +19,22 @@ from ..state import SpiderForgeState
 from .base import Node
 
 
+def _blocked_by_authorization(report: dict) -> bool:
+    """入口是否因授權而被擋（401/403，或 recon 已判定需要登入態）。
+
+    刻意**不**升級成 policy_kill：401/403 是灰色登入牆，D2 規定要照樣試；
+    這裡只在「試完什麼都沒有」時用來說清楚原因。
+    """
+    statuses = {
+        report.get("http_status"),
+        (report.get("http_entry_sample") or {}).get("status"),
+    }
+    return (
+        report.get("access_assessment") == "browser_session_required"
+        or bool(statuses & {401, 403})
+    )
+
+
 class FeasibilityTriage(Node):
     """recon 後、生成前的確定性可行性分流（D1：KILL 立即轉死信、不生成）。"""
 
@@ -117,12 +133,24 @@ class FeasibilityTriage(Node):
                     report,
                 )
 
-            # KILL_discovery_empty：結構化證據與 HTML 連結（含 sample_urls／browser／
-            # raw http／feed）皆無。
+            # 零證據的兩種成因要分開，否則死信會誤導人工判斷：
+            #   auth_required —— 被 401/403 或登入牆擋在門外，什麼都看不到
+            #   discovery_empty —— 進得去，但這個入口真的沒有文章連結
+            # 前者要換入口／取得授權，後者多半是入口 URL 給錯，處置完全不同。
             if not replayable and not html_links:
+                if _blocked_by_authorization(report):
+                    return self._kill(
+                        "KILL_auth_required",
+                        f"存取被拒（http_status={report.get('http_status')} "
+                        f"http_entry_status={http_entry_status} "
+                        f"access_assessment={report.get('access_assessment')}）："
+                        "需要登入態或授權才看得到內容；登入牆不繞過",
+                        report,
+                    )
                 return self._kill(
                     "KILL_discovery_empty",
-                    "無 article-like API/feed 候選，也找不到任何 HTML 明細連結",
+                    "無 article-like API/feed 候選，也找不到任何 HTML 明細連結"
+                    "（入口可正常存取，可能是入口 URL 給錯）",
                     report,
                 )
 
