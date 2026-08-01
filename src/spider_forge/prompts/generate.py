@@ -21,7 +21,8 @@ SPIDER_CONTRACT = """【硬性契約】
 2. allowed_domains 必須涵蓋實際請求 host；限速與最多 2 個列表分頁（低速由專案 AutoThrottle 維持）。
    constraints.max_pages 只限制列表翻頁請求，不是整支爬蟲的 response 數；
    禁止用 CLOSESPIDER_PAGECOUNT 實作此限制，以免列表頁占掉文章明細額度。
-   付費牆 / CAPTCHA / 登入牆一律不繞——遇到就讓它自然失敗，不要用假資料或繞道硬過。
+   需要帳號登入才看得到的內容不碰（不做登入、不用他人憑證）；除此之外遇到擋牆
+   照常嘗試，但不要用假資料充數——抓不到就讓它自然失敗。
 3. class 屬性 source="{site_name}"、source_type="{source_type}"、
    content_scope="{content_scope}"。
 4. 在同一檔案內定義 ArticleItem(scrapy.Item)，只 yield ArticleItem，不引用專案內其他模組。
@@ -40,6 +41,14 @@ SPIDER_CONTRACT = """【硬性契約】
    設 meta.playwright=True；禁止讓 start_urls 產生未啟用 Playwright 的入口 request。
    候選會由 scrapy runspider 獨立執行，不會載入 crawler runtime settings，因此必須
    在 custom_settings 自帶 scrapy-playwright 的 DOWNLOAD_HANDLERS 與 TWISTED_REACTOR。
-   只需要 response DOM 時設 meta.playwright=True 即可；沒有互動需求時禁止
-   playwright_include_page，避免 page 生命週期洩漏。
+   只需要 response DOM 時設 meta.playwright=True 即可。
+   **無限捲動／「載入更多」用 playwright_page_methods 實作**，不需要
+   playwright_include_page，例如：
+     from scrapy_playwright.page import PageMethod
+     meta={{"playwright": True, "playwright_page_methods": [
+         PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
+         PageMethod("wait_for_timeout", 1500),
+     ]}}
+   捲動或點「載入更多」的次數依 constraints.max_pages。真的需要
+   playwright_include_page 時，務必在 callback 內 await page.close()。
 8. 日期補 IANA 時區時使用 Python 標準庫 zoneinfo.ZoneInfo；不要為此新增 pytz 依賴。"""

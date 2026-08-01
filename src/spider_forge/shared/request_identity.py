@@ -4,14 +4,14 @@
 Accept-Language / sec-ch-ua 等），並留一條誠實痕跡 header ``X-Purpose``
 （課程練習、非商業）。低速由 AutoThrottle 維持。
 
-**不做（硬界線，寫死在這裡當契約）**：
-- 代理輪替 / 隨機 UA 池（本檔只有一個固定 UA 字串，不做輪替）
-- TLS/JA3 指紋偽裝、瀏覽器指紋 patch
-- CAPTCHA 解題
-- 冒充特定真實個人或機構
+**只有兩條界線**（2026-08-02 收斂，其餘都是預設值不是禁令）：
 
-硬被 WAF 擋 = KILL 訊號 → feasibility_triage/diagnose 走死信，不打軍備競賽。
-付費牆 / CAPTCHA 一律不繞（policy_kill）。
+1. **登入資料勿碰** —— 不做登入、不用他人憑證、不繞需要帳號的存取控制。
+2. **絕對不搞癱瘓** —— 低速由 AutoThrottle 維持，並發固定 1，翻頁有上限。
+
+其餘（單一固定 UA、不輪替代理、不做 TLS 指紋偽裝）是**這個專案目前的預設值**，
+不是道德界線：UA 與語系可用 env 覆蓋，要加代理池就自己加。先前把它們寫成
+「硬界線」並讓 WAF 擋一次就走死信，是自綁手腳，已解除。
 """
 
 from __future__ import annotations

@@ -79,22 +79,37 @@ def t_fetch_sample_sends_browser_identity():
     return ok, f"ua={sent.get('User-Agent', '')[:30]} x_purpose={sent.get('X-Purpose')}"
 
 
-def t_generator_contract_forbids_bypassing_paywall_or_captcha():
+def t_generator_contract_keeps_only_the_login_boundary():
+    """契約只保留「登入資料勿碰」這條界線，其餘不設限（2026-08-02 收斂）。
+
+    先前寫「付費牆 / CAPTCHA / 登入牆一律不繞」，把三種性質不同的東西綁在一起：
+    登入是存取控制（該守），付費牆與 CAPTCHA 則多半只是「被擋住」——寫成禁令等於
+    被擋一次就放棄，是自綁手腳。同時契約必須教捲動，否則 JS 載入的站全部只抓第 1 頁。
+    """
     contract = SPIDER_CONTRACT
-    ok = (
-        "付費牆" in contract
-        and "CAPTCHA" in contract
-        and "不繞" in contract
+    return (
+        # 保留的界線
+        "登入" in contract
+        and "不用他人憑證" in contract
+        # 拿掉的自綁手腳
+        and "一律不繞" not in contract
+        # 新增的能力：捲動
+        and "playwright_page_methods" in contract
+        and "scrollTo" in contract
+        # 原本就不該有的（robots 不參與判斷）
         and "ROBOTSTXT_OBEY" not in contract
+    ), (
+        f"登入界線={'不用他人憑證' in contract} "
+        f"殘留禁令={'一律不繞' in contract} "
+        f"教了捲動={'playwright_page_methods' in contract}"
     )
-    return ok, f"has_paywall_line={'付費牆' in contract}"
 
 
 TESTS = [
     t_browser_headers_are_real_and_honest,
     t_single_fixed_ua_not_a_pool,
     t_fetch_sample_sends_browser_identity,
-    t_generator_contract_forbids_bypassing_paywall_or_captcha,
+    t_generator_contract_keeps_only_the_login_boundary,
 ]
 
 

@@ -70,7 +70,7 @@ flowchart TD
     escalate["escalate_human<br/><small>非阻塞死信歸檔</small>"]:::prog
 
     prepare --> recon --> triage
-    triage -->|"KILL_*<br/>policy／auth_required／<br/>signature／js／discovery_empty"| escalate
+    triage -->|"KILL_*<br/>auth_required／signature_required／<br/>discovery_empty"| escalate
     triage -->|FEASIBLE_*| strategy
     strategy --> evidence --> generate --> preflight
 

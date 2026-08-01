@@ -21,29 +21,48 @@ def _cleanup(path_str: str | None) -> None:
 # ════════════════════════ (a) policy_kill：確定性挑戰頁 → KILL → 不進生成 ════════════════════════
 
 
-def t_policy_kill_classifies_and_routes_to_escalate():
-    state = {
-        "site_url": "https://paywall.example.com/news",
-        "validation": {"allowed_domains": ["paywall.example.com"]},
+def t_challenge_page_wording_alone_does_not_kill():
+    """**挑戰頁字樣不再單獨構成 KILL**（2026-08-02 解除自綁手腳）。
+
+    舊行為：`soft_block_detected` 為真就直接死信——即使頁面上明明有文章連結。
+    那等於「被擋一次就放棄」，而字樣比對的誤判來源很多（頁面剛好提到
+    cloudflare、錯誤頁一閃而過、渲染時序）。
+
+    新行為：往下走，讓後面的閘門用「實際抓到什麼」判斷。只有**真的零證據**時
+    才 KILL，而且那時的分類會說出真正原因（403 → auth_required）。
+    """
+    blocked_but_has_links = graph.feasibility_triage({
+        "site_url": "https://guarded.example.com/news",
+        "validation": {"allowed_domains": ["guarded.example.com"]},
+        "recon_report": {
+            "http_status": 200,
+            "title": "Just a moment... cloudflare",   # 字樣命中
+            "soft_block_detected": True,
+            "api_candidates": [], "feed_candidates": [],
+            "link_samples": [{"url": "https://guarded.example.com/news/a/12345"}],
+            "http_entry_sample": {"status": 200, "link_samples": []},
+        },
+    })
+    blocked_and_empty = graph.feasibility_triage({
+        "site_url": "https://guarded.example.com/news",
+        "validation": {"allowed_domains": ["guarded.example.com"]},
         "recon_report": {
             "http_status": 403,
-            "title": "Access Denied — Please verify you are human",
             "soft_block_detected": True,
-            "api_candidates": [],
-            "feed_candidates": [],
-            "link_samples": [],
+            "api_candidates": [], "feed_candidates": [], "link_samples": [],
             "http_entry_sample": {"status": 403, "link_samples": []},
         },
-    }
-    result = graph.feasibility_triage(state)
-    merged = {**state, **result}
-    route = graph.route_after_triage(merged)
-    ok = (
-        result["feasibility"]["class"] == "KILL_policy_kill"
-        and result["failure_class"] == "KILL_policy_kill"
-        and route == "escalate_human"
+    })
+    return (
+        # 有文章連結 → 照樣往下試，不因字樣就放棄
+        blocked_but_has_links["feasibility"]["class"].startswith("FEASIBLE_")
+        and graph.route_after_triage(blocked_but_has_links) == "strategy_decision"
+        # 真的零證據 → 仍然 KILL，但說出真正原因而不是籠統的 policy_kill
+        and blocked_and_empty["feasibility"]["class"] == "KILL_auth_required"
+    ), (
+        f"有連結={blocked_but_has_links['feasibility']['class']} "
+        f"零證據={blocked_and_empty['feasibility']['class']}"
     )
-    return ok, f"class={result['feasibility']['class']} route={route}"
 
 
 def t_kill_route_structurally_never_reaches_generation():
@@ -61,7 +80,7 @@ def t_kill_route_structurally_never_reaches_generation():
     return ok, f"triage_targets={sorted(triage_targets)} generate_sources={sorted(generate_sources)}"
 
 
-def t_policy_kill_escalates_and_writes_dead_letter_without_touching_generate():
+def t_blocked_and_empty_entry_escalates_without_touching_generate():
     state = {
         "site_url": "https://paywall.example.com/news",
         "source_prefix": "paywallex",
@@ -89,7 +108,7 @@ def t_policy_kill_escalates_and_writes_dead_letter_without_touching_generate():
             and escalated["status"] == "escalated"
             and dead_letter_path
             and Path(dead_letter_path).exists()
-            and record["failure_class"] == "KILL_policy_kill"
+            and record["failure_class"] == "KILL_auth_required"
             and "spider_code" not in merged  # generate_spider 從未被呼叫，state 沒有它會寫入的欄位
         )
     finally:
@@ -241,8 +260,14 @@ def t_signature_required_kills_when_only_locked_post_and_no_fallback():
     return ok, f"class={result['feasibility']['class']}"
 
 
-def t_js_required_kills_when_only_browser_rendered_links_exist():
-    state = {
+def t_js_rendered_site_uses_browser_transport_instead_of_dying():
+    """**JS 才看得到連結不再是死信**（2026-08-02 解除自綁手腳）。
+
+    舊行為判 `KILL_js_required` 直接死信——但這等於「明明 Playwright 抓得到卻放棄」。
+    產碼契約本來就支援 scrapy-playwright，現在還教了捲動載入更多。
+    新行為：標記需要瀏覽器傳輸（FEASIBLE_BROWSER）往下走。
+    """
+    result = graph.feasibility_triage({
         "site_url": "https://spa.example.com/news",
         "validation": {"allowed_domains": ["spa.example.com"]},
         "recon_report": {
@@ -253,10 +278,12 @@ def t_js_required_kills_when_only_browser_rendered_links_exist():
             "link_samples": [{"url": "https://spa.example.com/news/1", "text": "Article"}],
             "http_entry_sample": {"status": 200, "link_samples": []},
         },
-    }
-    result = graph.feasibility_triage(state)
-    ok = result["feasibility"]["class"] == "KILL_js_required"
-    return ok, f"class={result['feasibility']['class']}"
+    })
+    return (
+        result["feasibility"]["class"] == "FEASIBLE_BROWSER"
+        and "failure_class" not in result
+        and graph.route_after_triage(result) == "strategy_decision"
+    ), f"class={result['feasibility']['class']}"
 
 
 def t_public_browser_path_survives_plain_http_block():
@@ -396,16 +423,16 @@ def t_auth_blocked_entry_is_not_reported_as_discovery_empty():
 
 
 TESTS = [
-    t_policy_kill_classifies_and_routes_to_escalate,
+    t_challenge_page_wording_alone_does_not_kill,
     t_kill_route_structurally_never_reaches_generation,
-    t_policy_kill_escalates_and_writes_dead_letter_without_touching_generate,
+    t_blocked_and_empty_entry_escalates_without_touching_generate,
     t_clean_api_evidence_is_feasible_and_routes_to_strategy,
     t_discovery_empty_kills_and_writes_dead_letter,
     t_auth_blocked_entry_is_not_reported_as_discovery_empty,
     t_discovery_not_empty_when_recon_itself_failed,
     t_sample_urls_override_prevents_false_discovery_kill,
     t_signature_required_kills_when_only_locked_post_and_no_fallback,
-    t_js_required_kills_when_only_browser_rendered_links_exist,
+    t_js_rendered_site_uses_browser_transport_instead_of_dying,
     t_public_browser_path_survives_plain_http_block,
     t_escalate_writes_dead_letter_without_blocking,
     t_escalate_marks_topic_provider_outage_distinctly,

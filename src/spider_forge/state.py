@@ -15,7 +15,6 @@ KILL_FAILURE_CLASSES = frozenset(
         "policy_kill",
         "signature_required",
         "discovery_empty",
-        "js_required",
         "auth_required",
     }
 )

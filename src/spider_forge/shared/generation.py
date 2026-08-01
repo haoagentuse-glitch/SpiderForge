@@ -407,8 +407,10 @@ def preflight_generated_code(state: SpiderForgeState) -> dict:
 
     if "CLOSESPIDER_PAGECOUNT" in code:
         errors.append("forbidden_setting:CLOSESPIDER_PAGECOUNT")
-    if "playwright_include_page" in code:
-        errors.append("forbidden_playwright_page_handle")
+    # playwright_include_page 曾被無條件禁止（怕 page 生命週期洩漏），但那也一併
+    # 擋死了「捲動載入更多」——現代網站最主流的翻頁形式。改成只要求成對關閉。
+    if "playwright_include_page" in code and "page.close()" not in code:
+        errors.append("playwright_page_not_closed")
 
     if tree is not None:
         for node in ast.walk(tree):

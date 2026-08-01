@@ -62,22 +62,11 @@ class FeasibilityTriage(Node):
             report.get("access_assessment") == "browser_required_http_blocked"
         )
 
-        # KILL_policy_kill：browser_probe 已確定的挑戰頁字樣，或明確付費牆狀態碼。
-        # 單純 401/403（灰色登入牆，D2 規定要照樣試）不算——soft_block_detected 是
-        # browser_probe.py 對 title+body_text 掃 access denied/forbidden/captcha/
-        # verify you are human/cloudflare 的結果，比裸狀態碼更確定。
+        # 挑戰頁字樣（soft_block_detected）**不再直接 KILL**——那等於被擋一次就放棄，
+        # 與本節點自己的原則（寧可漏殺可做站，不可誤殺）矛盾。誤判來源很多：頁面剛好
+        # 提到 "cloudflare"、錯誤頁一閃而過、瀏覽器渲染時序。改成往下走，讓後面的閘門
+        # 用「實際抓到什麼」判斷——那比字樣比對可靠得多。
         http_entry_status = (report.get("http_entry_sample") or {}).get("status")
-        if report.get("soft_block_detected") is True or 402 in {
-            report.get("http_status"),
-            http_entry_status,
-        }:
-            return self._kill(
-                "KILL_policy_kill",
-                f"soft_block_detected={report.get('soft_block_detected')} "
-                f"http_status={report.get('http_status')} "
-                f"http_entry_status={http_entry_status}",
-                report,
-            )
 
         # recon 本身失敗（探測出錯）是不確定訊號，以下三類一律不判定，保守放行。
         recon_incomplete = bool(
@@ -105,8 +94,10 @@ class FeasibilityTriage(Node):
                     report,
                 )
 
-            # KILL_js_required：瀏覽器渲染後找得到文章連結，但原始 HTTP（未執行 JS）
-            # 完全沒有——這個「有 vs 沒有」的對比才是確定性訊號，不是單純猜「這站用了 JS」。
+            # 「瀏覽器看得到、plain HTTP 看不到」**不再是 KILL**（2026-08-02）。
+            # 舊行為判 KILL_js_required 直接死信，但這等於明明 Playwright 抓得到卻放棄——
+            # 產碼契約本來就支援 scrapy-playwright，現在還教了捲動載入。
+            # 改成標記「需要瀏覽器傳輸」往下走，讓產碼用 Playwright 路徑。
             browser_links = [
                 row
                 for row in (report.get("link_samples") or [])
@@ -118,20 +109,12 @@ class FeasibilityTriage(Node):
                 or []
                 if _matches_validation_url(str(row.get("url") or ""), state)
             ]
-            if (
-                browser_links
-                and not raw_links
-                and not replayable
+            js_rendered_only = bool(
+                browser_links and not raw_links and not replayable
                 and not (report.get("feed_candidates"))
-                and not has_sample_urls
-                and not browser_transport_required
-            ):
-                return self._kill(
-                    "KILL_js_required",
-                    f"browser_rendered_links={len(browser_links)} raw_http_links=0 "
-                    "無底層 XHR/feed 可重播、無 sample_urls",
-                    report,
-                )
+            )
+            if js_rendered_only:
+                browser_transport_required = True
 
             # 零證據的兩種成因要分開，否則死信會誤導人工判斷：
             #   auth_required —— 被 401/403 或登入牆擋在門外，什麼都看不到
@@ -167,7 +150,7 @@ class FeasibilityTriage(Node):
                 "reason": (
                     "存在可重播結構化候選"
                     if replayable
-                    else "plain HTTP 被擋，但公開瀏覽器已取得符合規則的文章連結"
+                    else "plain HTTP 取不到文章連結，但公開瀏覽器取得了——用 Playwright 傳輸"
                     if browser_transport_required
                     else "無可重播 API，但證據不足以確定性判 KILL，保守放行嘗試 HTML/軸樹策略"
                 ),
