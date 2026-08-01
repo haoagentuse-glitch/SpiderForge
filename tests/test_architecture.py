@@ -176,34 +176,69 @@ def t_forge_result_returns_only_output_fields():
     }, f"result_keys={sorted(result)}"
 
 
-def t_generation_prompt_field_list_matches_the_schema():
-    """產碼 prompt 列的欄位必須與 schema 一致。
+def t_prompt_contains_no_hardcoded_field_names():
+    """產碼 prompt 不得自己列欄位——欄位段落必須由 schema 生成。
 
-    缺口說明：`_contract()` 只把 source_type / content_scope / max_content_chars
-    從 schema 帶進 prompt，**欄位名是 SPIDER_CONTRACT 的文字寫死的**。所以
-    「改抓什麼欄位只改 schemas/outputs.py」在 fields 這一層並不成立——改了 schema
-    卻沒改 prompt，模型仍會照舊欄位產碼，而且不會有任何錯誤提示。
-
-    這個測試不修掉那個耦合（動 prompt 會影響產碼品質，要有實跑證據才敢改），
-    但至少讓不一致無法靜默發生。
+    原專案（與本專案重構前）把欄位名寫死在 SPIDER_CONTRACT 的文字裡，schema 只
+    供驗證使用。兩條路不同步的後果不是「改了沒效果」，而是**必定失敗的迴圈**：
+    驗證開始要求新欄位、模型卻不知道要抓它，修復用的又是同一份 prompt，
+    兩輪燒完進死信。這個測試釘死「prompt 不再自己列欄位」。
     """
-    import re
-
     from spider_forge.prompts.generate import SPIDER_CONTRACT
-    from spider_forge.schemas import DEFAULT_TARGET_SCHEMA
 
-    match = re.search(r"欄位為\s*(.+?)；", SPIDER_CONTRACT, re.DOTALL)
-    if not match:
-        return False, "SPIDER_CONTRACT 找不到「欄位為 …；」這段，欄位契約可能被改寫"
-    in_prompt = {
-        field.strip()
-        for field in re.split(r"[、,]", match.group(1).replace("\n", ""))
-        if field.strip()
+    # 直接比對欄位名會被 start_urls / content_scope 這類子字串誤判，所以改看
+    # 「欄位專屬的語意字眼」——這些只該出現在 schema 的 rule 裡。
+    field_specific_wording = ("ISO8601", "忠實摘錄", "permalink", "模型摘要")
+    leaked = [word for word in field_specific_wording if word in SPIDER_CONTRACT]
+    has_placeholder = "{field_contract}" in SPIDER_CONTRACT
+    return has_placeholder and not leaked, (
+        f"placeholder={has_placeholder} 洩漏到通用 prompt 的欄位語意={leaked}"
+    )
+
+
+def t_changing_the_schema_reaches_both_validation_and_prompt():
+    """**改一個地方就生效**：加一個欄位，驗證與產碼 prompt 必須同時看見它。
+
+    這是 schemas/outputs.py 的 Article 作為唯一來源的核心保證。
+    """
+    from spider_forge.schemas.outputs import build_target_schema, field_contract_block
+    from spider_forge.shared.fixture import build_fixture_spec
+    from spider_forge.shared.generation import _contract
+
+    schema = build_target_schema()
+    schema["fields"]["author"] = {
+        "type": "string",
+        "required": True,
+        "rule": "作者署名，取不到就跳過該筆",
     }
-    in_schema = set(DEFAULT_TARGET_SCHEMA["fields"])
-    return in_prompt == in_schema, (
-        f"prompt={sorted(in_prompt)} schema={sorted(in_schema)}"
-        "（改了 schema 的 fields 就要同步改 prompts/generate.py 的 SPIDER_CONTRACT）"
+
+    # ① 驗證路徑：離線重播的必填欄位
+    fixture = build_fixture_spec(
+        {
+            "site_url": "https://example.com/news",
+            "target_schema": schema,
+            "recon_report": {"dom_excerpt": "<ul></ul>"},
+        }
+    )
+    # ② 生成路徑：產碼 prompt
+    contract = _contract(
+        {
+            "target_schema": schema,
+            "source_prefix": "example_com",
+            "site_name": "Example",
+        }
+    )
+
+    return (
+        "author" in fixture["required_fields"]
+        and "author" in contract
+        and "作者署名" in contract
+        # 規則裡的 {max_chars} 要被實際上限取代，不能把大括號漏進 prompt
+        and "{max_chars}" not in field_contract_block(schema)
+        and "最多 6000 字" in contract
+    ), (
+        f"required_fields={fixture['required_fields']} "
+        f"prompt 有 author={'author' in contract}"
     )
 
 
@@ -257,7 +292,8 @@ def t_env_example_has_no_dead_variables():
 TESTS = [
     t_nodes_do_not_import_other_nodes,
     t_env_example_has_no_dead_variables,
-    t_generation_prompt_field_list_matches_the_schema,
+    t_prompt_contains_no_hardcoded_field_names,
+    t_changing_the_schema_reaches_both_validation_and_prompt,
     t_state_layers_partition_the_whole_state,
     t_graph_entry_only_accepts_input_fields,
     t_forge_result_returns_only_output_fields,

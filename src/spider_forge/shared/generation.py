@@ -10,7 +10,7 @@ from ..config import GENERATION_PROVIDER
 from ..state import SpiderForgeState
 from .evidence import _discover_detail_urls, _is_replayable_article_api
 from .materials import compile_generation_materials
-from ..schemas import STRATEGY_SCHEMA
+from ..schemas import STRATEGY_SCHEMA, field_contract_block
 from ..prompts.generate import CODE_SYSTEM, SPIDER_CONTRACT
 
 _FORBIDDEN_PAGECOUNT_OVERRIDE = re.compile(
@@ -190,15 +190,18 @@ def strategy_decision(state: SpiderForgeState) -> dict:
 
 
 def _contract(state: SpiderForgeState) -> str:
+    """把執行期的 target_schema 攤成產碼契約。
+
+    欄位段落由 `schemas.outputs.field_contract_block` 從**同一份 schema** 生成——
+    所以改了要抓的欄位，驗證與 prompt 會一起變，不會只有一半生效。
+    """
     schema = state["target_schema"]
     return SPIDER_CONTRACT.format(
         source_prefix=state["source_prefix"],
         site_name=state["site_name"],
         source_type=schema.get("source_type", "media"),
         content_scope=schema.get("content_scope", "summary_only"),
-        max_content_chars=schema.get("fields", {})
-        .get("content", {})
-        .get("max_chars", 6000),
+        field_contract=field_contract_block(schema),
     )
 
 

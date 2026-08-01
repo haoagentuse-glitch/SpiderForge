@@ -1,8 +1,11 @@
 """generate_spider 節點的 prompt：產 Scrapy 爬蟲碼的系統指令與硬性契約。
 
 SPIDER_CONTRACT 用 .format() 填入 {source_prefix}/{site_name}/{source_type}/
-{content_scope}/{max_content_chars}（見 shared/generation.py）。改產碼指令只改這裡，
-不動 generation.py 的邏輯。
+{content_scope}/{field_contract}（見 shared/generation.py 的 `_contract()`）。
+改產碼指令只改這裡，不動 generation.py 的邏輯。
+
+⚠️ **欄位契約不在這個檔**：`{field_contract}` 由 schemas/outputs.py 的 `Article`
+生成。要改抓什麼欄位、或改某欄位的規則，去改那個檔——這裡只放跨欄位的通用規則。
 """
 
 from __future__ import annotations
@@ -21,20 +24,15 @@ SPIDER_CONTRACT = """【硬性契約】
    付費牆 / CAPTCHA / 登入牆一律不繞——遇到就讓它自然失敗，不要用假資料或繞道硬過。
 3. class 屬性 source="{site_name}"、source_type="{source_type}"、
    content_scope="{content_scope}"。
-4. 在同一檔案內定義 ArticleItem(scrapy.Item)，欄位為 title、url、content、
-   published_at、source_record_id；只 yield ArticleItem，不引用專案內其他模組。
-5. 必填 title/url/content/published_at；published_at 必須是含時區 ISO8601。
-   媒體 content 是清除廣告/導覽後、保持原文順序與措辭的忠實摘錄，最多
-   {max_content_chars} 字；禁止改寫成模型摘要。無真實內文或發布時間就跳過，
-   禁止以 title 或目前時間偽造。
-6. url 是人工可查證入口。沒有單篇 permalink 的 API/公告另填 source_record_id，
-   禁止用假 query 或 fragment 冒充唯一文章 URL。
-7. 不寫資料庫、不讀 secrets、不 import 任何專案內模組。
-8. 只能使用 EvidencePack 中有 response body 的結構化來源（JSON/RSS/Atom）；
+4. 在同一檔案內定義 ArticleItem(scrapy.Item)，只 yield ArticleItem，不引用專案內其他模組。
+   欄位契約如下；必填欄位取不到真值就跳過該筆，禁止以 title 或目前時間偽造：
+{field_contract}
+5. 不寫資料庫、不讀 secrets、不 import 任何專案內模組。
+6. 只能使用 EvidencePack 中有 response body 的結構化來源（JSON/RSS/Atom）；
    不得依 URL 名稱猜 JSON path。
    若 browser 被擋但 plain HTTP=200，沿用 EvidencePack 的 safe_request_headers，
    用 Scrapy HTTP/HTML，不得硬切 Playwright。
-9. 嚴格遵守 EvidencePack.request.validation 的 URL pattern、排除規則、時效與數量。
+7. 嚴格遵守 EvidencePack.request.validation 的 URL pattern、排除規則、時效與數量。
    Scrapy SelectorList 沒有 .first()；用 .get()、getall() 或索引。
    只有 access_assessment 為 browser_required_http_blocked 或
    browser_session_required 時，才可 import/use scrapy_playwright。
@@ -44,6 +42,4 @@ SPIDER_CONTRACT = """【硬性契約】
    在 custom_settings 自帶 scrapy-playwright 的 DOWNLOAD_HANDLERS 與 TWISTED_REACTOR。
    只需要 response DOM 時設 meta.playwright=True 即可；沒有互動需求時禁止
    playwright_include_page，避免 page 生命週期洩漏。
-10. permalink 的 path 大小寫、連字號與 query parameter 名稱必須逐字沿用
-    EvidencePack 的 observed detail URL；禁止把 ?a= 改成 ?b= 或自行改寫 URL 形式。
-11. 日期補 IANA 時區時使用 Python 標準庫 zoneinfo.ZoneInfo；不要為此新增 pytz 依賴。"""
+8. 日期補 IANA 時區時使用 Python 標準庫 zoneinfo.ZoneInfo；不要為此新增 pytz 依賴。"""
