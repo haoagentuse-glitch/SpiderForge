@@ -176,6 +176,37 @@ def t_forge_result_returns_only_output_fields():
     }, f"result_keys={sorted(result)}"
 
 
+def t_generation_prompt_field_list_matches_the_schema():
+    """產碼 prompt 列的欄位必須與 schema 一致。
+
+    缺口說明：`_contract()` 只把 source_type / content_scope / max_content_chars
+    從 schema 帶進 prompt，**欄位名是 SPIDER_CONTRACT 的文字寫死的**。所以
+    「改抓什麼欄位只改 schemas/outputs.py」在 fields 這一層並不成立——改了 schema
+    卻沒改 prompt，模型仍會照舊欄位產碼，而且不會有任何錯誤提示。
+
+    這個測試不修掉那個耦合（動 prompt 會影響產碼品質，要有實跑證據才敢改），
+    但至少讓不一致無法靜默發生。
+    """
+    import re
+
+    from spider_forge.prompts.generate import SPIDER_CONTRACT
+    from spider_forge.schemas import DEFAULT_TARGET_SCHEMA
+
+    match = re.search(r"欄位為\s*(.+?)；", SPIDER_CONTRACT, re.DOTALL)
+    if not match:
+        return False, "SPIDER_CONTRACT 找不到「欄位為 …；」這段，欄位契約可能被改寫"
+    in_prompt = {
+        field.strip()
+        for field in re.split(r"[、,]", match.group(1).replace("\n", ""))
+        if field.strip()
+    }
+    in_schema = set(DEFAULT_TARGET_SCHEMA["fields"])
+    return in_prompt == in_schema, (
+        f"prompt={sorted(in_prompt)} schema={sorted(in_schema)}"
+        "（改了 schema 的 fields 就要同步改 prompts/generate.py 的 SPIDER_CONTRACT）"
+    )
+
+
 def _env_vars_read_by_code() -> set[str]:
     """AST 掃出程式碼真正讀取的環境變數（含 registry 的 api_key_env 間接讀取）。"""
     read: set[str] = set()
@@ -226,6 +257,7 @@ def t_env_example_has_no_dead_variables():
 TESTS = [
     t_nodes_do_not_import_other_nodes,
     t_env_example_has_no_dead_variables,
+    t_generation_prompt_field_list_matches_the_schema,
     t_state_layers_partition_the_whole_state,
     t_graph_entry_only_accepts_input_fields,
     t_forge_result_returns_only_output_fields,
