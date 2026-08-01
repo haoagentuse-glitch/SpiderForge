@@ -17,9 +17,10 @@ import yaml
 
 from spider_forge.clients.coder import drain_usage
 from spider_forge.config import SITE_QUEUE_PATH, run_dir
+from spider_forge.runs.ledger import append_run, summarize
+
 from .pipeline import build_pipeline
 from .profiles import apply, resolve
-from spider_forge.runs.ledger import append_run, summarize
 
 
 def load_sites(only: list[str] | None = None) -> list[dict]:
@@ -29,9 +30,7 @@ def load_sites(only: list[str] | None = None) -> list[dict]:
             "套件不內建站清單，請用環境變數 SPIDERFORGE_SITE_QUEUE 指向自己的 YAML"
             "（格式見 examples/site_queue.taiwan-finance.yaml）。"
         )
-    sites = yaml.safe_load(
-        SITE_QUEUE_PATH.read_text(encoding="utf-8")
-    )["sites"]
+    sites = yaml.safe_load(SITE_QUEUE_PATH.read_text(encoding="utf-8"))["sites"]
     if only:
         sites = [s for s in sites if s["source_prefix"] in only]
     return sites
@@ -59,7 +58,7 @@ def run_site(
 ) -> dict:
     drain_usage()  # usage 生命週期以單站為界；先清除任何舊進程殘留
     init = {
-        **apply(profile or {}, site),   # 站台 YAML 的設定優先於 profile
+        **apply(profile or {}, site),  # 站台 YAML 的設定優先於 profile
         "max_retries": max_retries,
     }  # retry_count/kimi_used 等內部欄位由 prepare_request 初始化（見 state.ForgeInput）
     tid = run_id or f"{site.get('source_prefix', 'site')}-{uuid.uuid4().hex[:8]}"
@@ -77,7 +76,9 @@ def run_site(
     test = v.get("test_result", {})
     # escalate_human 已改非阻塞死信（spec v2 D4）：不再靠 __interrupt__ 事件判斷，
     # 節點本身就把 status 寫成 "escalated" 並正常 END，state 是唯一真相來源。
-    status = v.get("status") if v.get("status") in {"success", "escalated"} else "incomplete"
+    status = (
+        v.get("status") if v.get("status") in {"success", "escalated"} else "incomplete"
+    )
     repair_count = v.get("retry_count", 0)
     evidence_path = _save_evidence(tid, v.get("evidence_pack") or {})
     record = {
@@ -93,7 +94,9 @@ def run_site(
         "repair_count": repair_count,
         "first_pass_success": status == "success" and repair_count == 0,
         "llm_calls": len(usage),
-        "coder_tokens": sum(u.get("prompt_tokens", 0) + u.get("completion_tokens", 0) for u in usage),
+        "coder_tokens": sum(
+            u.get("prompt_tokens", 0) + u.get("completion_tokens", 0) for u in usage
+        ),
         "item_count": validation.get("item_count"),
         "valid_count": validation.get("valid_count"),
         "unique_valid_count": validation.get("unique_valid_count"),
@@ -182,7 +185,9 @@ def run_batch(
     graph = build_pipeline()
     results = []
     for site in sites:
-        print(f"\n===== {site['site_name']} ({site['source_prefix']}) =====", flush=True)
+        print(
+            f"\n===== {site['site_name']} ({site['source_prefix']}) =====", flush=True
+        )
         rec = run_one(graph, site, max_retries=max_retries, profile=settings)
         print(
             f"  -> {rec.get('status')} | strategy={rec.get('strategy')} "

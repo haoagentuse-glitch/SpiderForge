@@ -682,7 +682,10 @@ def collect_evidence(state: SpiderForgeState) -> dict:
             for row in related[:4]
         ]
 
-    discovered_detail_urls = _discover_detail_urls(state, recon_report)
+    # discover_links 節點已挑好就沿用；沒有才自己找（相容單獨呼叫與舊流程）。
+    discovered_detail_urls = list(
+        state.get("discovered_detail_urls") or _discover_detail_urls(state, recon_report)
+    )
     browser_transport_required = (
         recon_report.get("access_assessment")
         == "browser_required_http_blocked"

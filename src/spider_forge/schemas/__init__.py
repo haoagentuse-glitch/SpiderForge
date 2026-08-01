@@ -1,6 +1,6 @@
 """集中的資料 schema 定義（抓取目標 + LLM 結構化輸出）。"""
 
-from .llm_io import DIAGNOSE_SCHEMA, STRATEGY_SCHEMA
+from .llm_io import DIAGNOSE_SCHEMA, LINK_PICK_SCHEMA, STRATEGY_SCHEMA
 from .outputs import (
     DEFAULT_TARGET_SCHEMA,
     Article,
@@ -15,4 +15,5 @@ __all__ = [
     "build_target_schema",
     "STRATEGY_SCHEMA",
     "DIAGNOSE_SCHEMA",
+    "LINK_PICK_SCHEMA",
 ]

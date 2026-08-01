@@ -11,6 +11,7 @@
 from .base import Node
 from .block_gate import ContentBlockGate
 from .diagnose import DiagnoseFailure
+from .discover_links import DiscoverArticleLinks
 from .escalate import EscalateHuman
 from .evidence import CollectEvidence
 from .fixture import FixtureTest
@@ -30,6 +31,7 @@ __all__ = [
     "Node",
     "PrepareRequest",
     "Recon",
+    "DiscoverArticleLinks",
     "FeasibilityTriage",
     "StrategyDecision",
     "CollectEvidence",

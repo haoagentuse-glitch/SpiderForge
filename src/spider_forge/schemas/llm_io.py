@@ -29,3 +29,18 @@ DIAGNOSE_SCHEMA = {
     },
     "required": ["failure_type", "suggested_fix", "error_signature"],
 }
+
+
+# discover_links 節點：模型只回「哪些 index 是文章明細頁」，依像的程度排序。
+LINK_PICK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "article_indices": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {"type": "integer", "minimum": 0},
+        }
+    },
+    "required": ["article_indices"],
+    "additionalProperties": False,
+}

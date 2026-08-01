@@ -59,6 +59,8 @@ class ForgeInternal(TypedDict, total=False):
 
     # ── 偵查 / 內部 EvidencePack ──
     recon_report: dict[str, Any]
+    discovered_detail_urls: list[str]  # discover_links 挑出的文章明細頁候選
+    link_discovery: dict[str, Any]     # 挑選方法與候選數（診斷用）
     feasibility: dict[str, Any]  # feasibility_triage 輸出：class/reason/evidence_summary（spec v2 §3.2）
     evidence_pack: dict[str, Any]
     strategy: Literal["api", "dom", "hybrid"]

@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from spider_forge.nodes.block_gate import ContentBlockGate
 from spider_forge.nodes.diagnose import DiagnoseFailure
+from spider_forge.nodes.discover_links import DiscoverArticleLinks
 from spider_forge.nodes.escalate import EscalateHuman
 from spider_forge.nodes.evidence import CollectEvidence
 from spider_forge.nodes.fixture import FixtureTest
@@ -41,6 +42,7 @@ prepare_request = PrepareRequest()
 recon = Recon()
 feasibility_triage = FeasibilityTriage()
 strategy_decision = StrategyDecision()
+discover_links = DiscoverArticleLinks()
 collect_evidence = CollectEvidence()
 generate_spider = GenerateSpider()
 preflight_generated_code = GenerationPreflight()
@@ -125,6 +127,7 @@ def build_pipeline(checkpointer=None):
         ("recon", recon),
         ("feasibility_triage", feasibility_triage),
         ("strategy_decision", strategy_decision),
+        ("discover_links", discover_links),
         ("collect_evidence", collect_evidence),
         ("generate_spider", generate_spider),
         ("generation_preflight", preflight_generated_code),
@@ -149,7 +152,8 @@ def build_pipeline(checkpointer=None):
         route_after_triage,
         ["strategy_decision", "escalate_human"],
     )
-    builder.add_edge("strategy_decision", "collect_evidence")
+    builder.add_edge("strategy_decision", "discover_links")
+    builder.add_edge("discover_links", "collect_evidence")
     builder.add_edge("collect_evidence", "generate_spider")
     builder.add_edge("generate_spider", "generation_preflight")
     builder.add_conditional_edges(

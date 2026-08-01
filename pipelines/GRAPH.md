@@ -174,14 +174,25 @@ flowchart TD
 
 ---
 
-## 待辦順序
+## 實作進度
 
-1. **先跑通一個站拿到成功基準** —— 目前零個成功案例，任何改動都無從判斷好壞
-2. 做 ⑤（樣本驗證，純程式）—— 零成本、可測試、能抓到 BBC 這類案例
-3. 做 ①（硬性排除，純程式）
-4. 做 ③（Gemini 挑連結，Ollama fallback）—— 用步驟 1 的成功案例當回歸基準
-5. `run --site <yaml>` 補 CLI 缺口（validation 目前只能從站台 YAML 進入，見
-   `batch.py:run_site`；`run` 子命令組不出來）
+- [x] **①②③ `discover_links` 節點**（commit 見變更記錄）——插在 `strategy_decision`
+      與 `collect_evidence` 之間。三層過濾 + 三段 fallback（Gemini → Ollama → 啟發式）。
+      用 BBC 實抓的 30 個連結鎖成回歸測試（`tests/fixtures/bbc_business_links.json`）。
+- [ ] ⑤ 樣本驗證 + 有界重試 —— 下一步
+- [ ] `run --site <yaml>` 補 CLI 缺口（validation 目前只能從站台 YAML 進入，見
+      `batch.py:run_site`；`run` 子命令組不出來）
+
+### ①②③ 的實測對照（BBC 真實資料，非模擬）
+
+| | 命中真文章 | 挑到什麼 |
+|---|---|---|
+| 改動前（DOM 順序取 2） | **0/2** | `/business#bbc-main`、首頁 |
+| 零設定 + 啟發式 fallback | 2/2 | 真文章（含體育版）|
+| 有 `article_url_patterns` | 2/2 | 全是商業新聞 |
+
+這組數字同時證明了兩件事：舊行為確實壞掉，而且**③ 取代不了 ②**——零設定時
+挑到的是體育新聞，要指定版面仍然只能靠 URL pattern。
 
 ## 變更記錄
 

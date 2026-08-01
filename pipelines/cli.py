@@ -12,18 +12,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from spider_forge.observability import setup_tracing
-from .pipeline import build_pipeline
-from .batch import run_batch, run_one
-from .doctor import report, run_checks
-from .profiles import PROFILES, apply, resolve
-from spider_forge.runs.ledger import summarize
 from spider_forge.config import (
     REQUESTS_DIR,
     ensure_runtime_layout,
     location_map,
     run_dir,
 )
+from spider_forge.observability import setup_tracing
+from spider_forge.runs.ledger import summarize
+
+from .batch import run_batch, run_one
+from .doctor import report, run_checks
+from .pipeline import build_pipeline
+from .profiles import PROFILES, apply, resolve
 
 
 class _Tee:
@@ -43,9 +44,7 @@ class _Tee:
 
 def _urls_from_file(path: Path) -> list[str]:
     if not path.is_file():
-        raise FileNotFoundError(
-            f"找不到 URL 清單：{path}；請每行放一個 http/https URL"
-        )
+        raise FileNotFoundError(f"找不到 URL 清單：{path}；請每行放一個 http/https URL")
     return [
         line.strip()
         for line in path.read_text(encoding="utf-8-sig").splitlines()
@@ -80,8 +79,7 @@ def _run(args: argparse.Namespace) -> int:
     urls = list(dict.fromkeys(_validate_url(value) for value in urls))
     if not urls:
         raise ValueError(
-            "沒有可執行 URL；請使用 --url，或寫入 "
-            f"{REQUESTS_DIR / 'urls.txt'}"
+            f"沒有可執行 URL；請使用 --url，或寫入 {REQUESTS_DIR / 'urls.txt'}"
         )
     if (args.prefix or args.name) and len(urls) != 1:
         raise ValueError("--prefix/--name 只適用單一 URL")
@@ -116,7 +114,11 @@ def _run(args: argparse.Namespace) -> int:
                 print(json.dumps(record, ensure_ascii=False, indent=2))
         records.append(record)
 
-    print(json.dumps({"runs": records, "paths": location_map()}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"runs": records, "paths": location_map()}, ensure_ascii=False, indent=2
+        )
+    )
     if any(record.get("status") == "error" for record in records):
         return 1
     if any(record.get("status") != "success" for record in records):

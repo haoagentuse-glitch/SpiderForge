@@ -1,0 +1,126 @@
+{
+  "_source": "BBC Business 入口頁 recon 實抓（2026-08-01），用來鎖住『導覽 vs 文章』的挑選行為",
+  "site_url": "https://www.bbc.com/business",
+  "link_samples": [
+    {
+      "url": "https://www.bbc.com/business#bbc-main",
+      "text": "Skip to content"
+    },
+    {
+      "url": "https://www.bbc.com/",
+      "text": "British Broadcasting Corporation"
+    },
+    {
+      "url": "https://session.bbc.com/session?action=register&userOrigin=BBCS_BBC&ptrt=https%3A%2F%2Fwww.bbc.com%2Fbusiness",
+      "text": "Register"
+    },
+    {
+      "url": "https://session.bbc.com/session?userOrigin=BBCS_BBC&ptrt=https%3A%2F%2Fwww.bbc.com%2Fbusiness",
+      "text": "Sign In"
+    },
+    {
+      "url": "https://www.bbc.com/",
+      "text": "Home"
+    },
+    {
+      "url": "https://www.bbc.com/news",
+      "text": "News"
+    },
+    {
+      "url": "https://www.bbc.com/sport",
+      "text": "Sport"
+    },
+    {
+      "url": "https://www.bbc.com/business",
+      "text": "Business"
+    },
+    {
+      "url": "https://www.bbc.com/technology",
+      "text": "Technology"
+    },
+    {
+      "url": "https://www.bbc.com/health",
+      "text": "Health"
+    },
+    {
+      "url": "https://www.bbc.com/culture",
+      "text": "Culture"
+    },
+    {
+      "url": "https://www.bbc.com/arts",
+      "text": "Arts"
+    },
+    {
+      "url": "https://www.bbc.com/travel",
+      "text": "Travel"
+    },
+    {
+      "url": "https://www.bbc.com/future-planet",
+      "text": "Earth"
+    },
+    {
+      "url": "https://www.bbc.com/audio",
+      "text": "Audio"
+    },
+    {
+      "url": "https://www.bbc.com/video",
+      "text": "Video"
+    },
+    {
+      "url": "https://www.bbc.com/live",
+      "text": "Live"
+    },
+    {
+      "url": "https://www.bbc.com/business/world-of-business",
+      "text": "World of Business"
+    },
+    {
+      "url": "https://www.bbc.com/business/technology-of-business",
+      "text": "Technology of Business"
+    },
+    {
+      "url": "https://www.bbc.com/business/opening-bell",
+      "text": "NYSE Opening Bell"
+    },
+    {
+      "url": "https://www.bbc.com/",
+      "text": "Home"
+    },
+    {
+      "url": "https://www.bbc.com/sport",
+      "text": "Sport"
+    },
+    {
+      "url": "https://www.bbc.com/health",
+      "text": "Health"
+    },
+    {
+      "url": "https://www.bbc.com/weather",
+      "text": "Weather"
+    },
+    {
+      "url": "https://www.bbc.com/newsletters",
+      "text": "Newsletters"
+    },
+    {
+      "url": "https://www.bbc.com/sport/football/articles/czekr6kn58po",
+      "text": "Fifa scraps controversial World Cup investment plan after outcry Football's world governing body Fifa abandons plans to sell off stakes in its major competitions after widespread opposition to preside"
+    },
+    {
+      "url": "https://www.bbc.com/news/articles/cr7k49xjzzeo",
+      "text": "AI firms must answer for rogue bots, says boss of hacked company Clement Delangue said he didn't want cyber attacks on other companies to become \"normalised\". 21 hrs ago"
+    },
+    {
+      "url": "https://www.bbc.com/news/articles/c8x274xxxpwo",
+      "text": "India wants to join the strawberry superpowers Indian strawberry farmers rely on varieties imported from the US and Europe, but that could change. 2 days ago Asia"
+    },
+    {
+      "url": "https://www.bbc.com/news/articles/c0jl8v23qwgo",
+      "text": "The Chinese robot army transforming the UK's retail industry Britain's weak productivity growth and labour shortages are creating an opportunity for China's robotics firms. 3 days ago Asia"
+    },
+    {
+      "url": "https://www.bbc.com/news/articles/c62q7w003lro",
+      "text": "BP puts North Sea business up for sale The decision follows a review of BP's operations and is set to end 60 years of production in the region by the oil giant. 23 hrs ago Scotland"
+    }
+  ]
+}
