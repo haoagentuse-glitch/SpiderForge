@@ -8,10 +8,30 @@ GitHub 直接渲染——draw.io 的 XML 改一次要重排座標，迭代太慢
 | 顏色 | 意思 | 成本 |
 |---|---|---|
 | 🟦 藍 | 程式（確定性，可寫回歸測試） | 免費 |
-| 🟩 綠 | Ollama 本地模型 `qwen2.5:7b-instruct` | 免費（不吃 API 額度） |
-| 🟨 黃 | Gemini | 付費，少量 |
-| 🟥 紅 | DeepSeek／Kimi（產碼） | 付費，主要成本 |
+| 🟩 綠 | Ollama 本地模型 `qwen2.5:7b-instruct` | 免費、無配額；但要本機開著 |
+| 🟨 黃 | Gemini `flash-lite` | **免費額度內**（見下方額度計算） |
+| 🟥 紅 | DeepSeek／Kimi（產碼） | 付費，**唯一的實質金錢成本** |
 | ⬜ 虛線 | **提案，尚未實作** | — |
+
+### Gemini 免費額度與實際用量（2026-08-02 更新）
+
+Free Tier：**RPM 15–30 · TPM 250K–1M · RPD 1,000–1,500**
+
+一次完整 run 的 Gemini 呼叫（用實際設定算，非估計）：
+
+| 節點 | 次數 | 依據 |
+|---|---|---|
+| `topic_gate`（enforce） | 2 | `gemini_batch_size=20`，30 筆 → 2 批 |
+| `content_block_gate` | 0–1 | 只在「部分命中封鎖字樣」且站設定 `provider=gemini` |
+| 挑文章連結（提案 ③） | 1 | 30 個 URL+標題一次送完 |
+| **合計** | **約 3–4** | |
+
+→ **RPD 1,000–1,500 = 每天可跑 250–500 次完整 run。**
+→ RPM 15 看似緊，但批次是序列執行、每站耗時 30–75 秒（實測 BBC 32s／Reuters 75s），
+   撞不到上限。真撞到時 `clients/topic.py` 已有 `Retry-After` 退避處理。
+
+**結論：Gemini 在這個專案的規模下等同免費。** 先前把它標成「付費，要省」是
+沒查證的預設假設，據此得出的「Ollama 優先、Gemini 當 fallback」也要跟著翻案。
 
 ---
 
@@ -97,7 +117,7 @@ flowchart TD
         direction TB
         hard{"① 硬性排除<br/><small>入口 URL 自己、#錨點、首頁、跨網域<br/>純結構事實，不需要模型</small>"}:::newprog
         pattern{"② URL pattern 過濾<br/><small>article_url_patterns／excluded<br/>有設定才生效（現有機制）</small>"}:::newprog
-        pick["③ 挑「像文章」的連結<br/><small>輸入：URL + 連結文字（&lt;2000 token）<br/>輸出：排序後的候選</small>"]:::newlocal
+        pick["③ 挑「像文章」的連結<br/><small>Gemini flash-lite（免費額度內）<br/>Ollama 當 fallback<br/>輸入：URL + 連結文字（&lt;2000 token）</small>"]:::newmodel
         sample["④ 抓明細樣本（2–3 篇）"]:::newprog
         verify{"⑤ 樣本驗證<br/><small>兩份樣本雷同？（拿到導覽頁必然雷同）<br/>有 h1／article？正文長度足夠？<br/>純程式，不需要模型</small>"}:::newprog
     end
@@ -112,7 +132,7 @@ flowchart TD
     classDef prog fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
     classDef paid fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
     classDef newprog fill:#eff6ff,stroke:#2563eb,stroke-dasharray:5 3,color:#1e3a5f
-    classDef newlocal fill:#f0fdf4,stroke:#16a34a,stroke-dasharray:5 3,color:#14532d
+    classDef newmodel fill:#fefce8,stroke:#ca8a04,stroke-dasharray:5 3,color:#713f12
 ```
 
 ### 為什麼這樣分三層
@@ -121,7 +141,7 @@ flowchart TD
 |---|---|---|---|
 | ① 硬性排除 | 程式 | 錨點、首頁、入口自己 | 分不出「分類頁 vs 文章」 |
 | ② URL pattern | 程式（使用者設定） | **哪個版面**的精確控制 | 要先知道 pattern 長什麼樣 |
-| ③ 挑文章 | Ollama 本地 | 導覽 vs 文章（新站零設定也能動） | **分不出哪個版面** |
+| ③ 挑文章 | Gemini（Ollama fallback） | 導覽 vs 文章（新站零設定也能動） | **分不出哪個版面** |
 | ⑤ 樣本驗證 | 程式 | 抓到的樣本根本不是文章 | — |
 
 **③ 不能取代 ②。** 實測：四種啟發式與模型都會把足球新聞排進前段——它確實是
@@ -131,14 +151,26 @@ flowchart TD
 **⑤ 是這裡最便宜也最有效的一格。** BBC 那次兩份樣本的 body 都是 20000 字且高度
 相似（都是同一個列表頁），純程式就抓得出來，連模型都不用呼叫。
 
-### 模型選擇的理由
+### 模型選擇的理由（2026-08-02 翻案）
 
 | 用在哪 | 選擇 | 為什麼 |
 |---|---|---|
-| ③ 挑文章連結 | **Ollama 本地** | 免費、已在流程裡、任務比它現在做的「策略判斷」還簡單；下游還有五道閘門兜底 |
-| ③ 的 fallback | Gemini | 本地判不出來才升級，便宜且已接好 |
+| ③ 挑文章連結 | **Gemini flash-lite** | 免費額度內（每天夠跑 250–500 次 run）、品質明顯優於 7B、**不需要使用者記得開 Ollama** |
+| ③ 的 fallback | Ollama 本地 | Gemini 額度用盡或斷網時頂上；無配額限制 |
 | ①②⑤ | 程式 | 純結構事實，用模型是浪費且不可測 |
-| — | **不用 DeepSeek** | 那是產碼模型，拿來分類是殺雞用牛刀，而且吃的是付費額度 |
+| — | **不用 DeepSeek** | 那是產碼模型，拿來分類是殺雞用牛刀，而且是唯一要付錢的 |
+
+**主從關係翻案的理由**（原本寫 Ollama 主力、Gemini fallback）：
+
+1. 前提錯了 —— 原判斷建立在「Gemini 要付費」，實際上這個規模等同免費。
+2. **可用性才是成功率的瓶頸。** 本次對話中 Ollama 已經停過兩次（背景程序被
+   session 結束帶走），每次都讓 `strategy_decision` 直接失敗。Gemini 是雲端
+   服務，沒有「忘記開」這個失敗模式——對「最高成功率」這個目標，這比模型
+   品質更關鍵。
+3. 品質差距實際存在：辨識「這個連結是新聞文章還是導覽」對 flash-lite 是
+   輕鬆任務，對 7B 則在邊緣（尤其中文站的短標題）。
+
+**但 Ollama 不該拿掉**：它是唯一沒有配額、離線也能動的路徑，當 fallback 剛好。
 
 ---
 
@@ -147,11 +179,14 @@ flowchart TD
 1. **先跑通一個站拿到成功基準** —— 目前零個成功案例，任何改動都無從判斷好壞
 2. 做 ⑤（樣本驗證，純程式）—— 零成本、可測試、能抓到 BBC 這類案例
 3. 做 ①（硬性排除，純程式）
-4. 做 ③（本地模型挑連結）—— 用步驟 1 的成功案例當回歸基準
+4. 做 ③（Gemini 挑連結，Ollama fallback）—— 用步驟 1 的成功案例當回歸基準
 5. `run --site <yaml>` 補 CLI 缺口（validation 目前只能從站台 YAML 進入，見
    `batch.py:run_site`；`run` 子命令組不出來）
 
 ## 變更記錄
 
+- 2026-08-02：使用者提供 Gemini Free Tier 實際額度（RPM 15–30／RPD 1,000–1,500），
+  據此翻案模型主從：③ 改為 Gemini 主力、Ollama fallback。原判斷建立在「Gemini 要
+  付費」這個未查證的假設上。
 - 2026-08-01：建立。圖一為現況實況（查程式碼確認每個節點的判斷來源），
   圖二為 BBC 實跑失敗後的提案。
