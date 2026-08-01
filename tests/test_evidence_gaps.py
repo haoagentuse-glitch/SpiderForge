@@ -223,7 +223,45 @@ def t_collect_evidence_populates_three_gaps():
     )
 
 
+def t_pagination_detects_page_links_inside_the_listing():
+    """列表頁裡的 <a href="?page=2"> 要被認出來——這是傳統新聞站最常見的翻頁形式。
+
+    原本的偵測只看入口 URL **自己** 的 query 參數，而 ?page=2 通常出現在頁面裡的
+    連結上，漏掉它等於大多數站都被判成 none_detected（只抓第 1 頁）。
+    """
+    from spider_forge.shared.evidence import _detect_pagination
+
+    def detect(link_samples):
+        return _detect_pagination(
+            chosen_api="", entry_url="https://e.com/news", api_body="",
+            entry_html="", link_samples=link_samples,
+        )
+
+    found = detect([{"url": "https://e.com/news/a/1", "text": "文章"},
+                    {"url": "https://e.com/news?page=2", "text": "2"}])
+    offset = detect([{"url": "https://e.com/news?offset=20", "text": "下一頁"}])
+    # 只有文章連結、或查詢字串不是翻頁參數，都不該誤判
+    articles_only = detect([{"url": "https://e.com/news/a/1"}, {"url": "https://e.com/news/a/2"}])
+    search = detect([{"url": "https://e.com/s?q=abc", "text": "搜尋"}])
+    # 入口自己的參數優先於頁面連結
+    entry_first = _detect_pagination(
+        chosen_api="https://e.com/api?page=1", entry_url="https://e.com/news",
+        api_body="", entry_html="", link_samples=[{"url": "https://e.com/n?offset=20"}],
+    )
+
+    return (
+        found["type"] == "query_param" and found["param"] == "page"
+        and found["discovered_in"] == "listing_page_link"
+        and offset["param"] == "offset"
+        and articles_only["type"] == "none_detected"
+        and search["type"] == "none_detected"
+        and entry_first["param"] == "page"
+        and "discovered_in" not in entry_first
+    ), f"found={found} articles_only={articles_only['type']} search={search['type']}"
+
+
 TESTS = [
+    t_pagination_detects_page_links_inside_the_listing,
     t_classify_datetime_covers_known_formats,
     t_detect_pagination_query_param,
     t_detect_pagination_cursor_from_body,

@@ -223,7 +223,7 @@ def _generation_prompt(state: SpiderForgeState) -> tuple[str, dict]:
         "列表已提供 published_at 時要經 request.meta 傳給明細，不得以 HTML 日期覆蓋精確時間。\n"
         "DOM selector 只能使用 dom_samples 中逐字存在的 class／id；同站樣本版型不同時，"
         "使用少量、可證明的 fallback，不得選整個 main 或所有通用 content 容器。\n"
-        "翻頁照 pagination；type=none_detected 就只抓第 1 頁。"
+        "翻頁照 pagination 的 type 實作，一路翻到 constraints.max_pages 或沒有下一頁為止；type=none_detected 才只抓第 1 頁。目標是盡量往回抓歷史，不是只抓最新幾筆。"
         "請求沿用 replay_headers，不要重複定義 headers。\n\n"
         "【編譯後材料】\n"
         f"{json.dumps(materials, ensure_ascii=False)}\n\n"

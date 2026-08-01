@@ -459,9 +459,19 @@ _NEXT_HREF_RE = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
 
 
 def _detect_pagination(
-    *, chosen_api: str, entry_url: str, api_body: str, entry_html: str
+    *,
+    chosen_api: str,
+    entry_url: str,
+    api_body: str,
+    entry_html: str,
+    link_samples: list | None = None,
 ) -> dict:
-    """確定性偵測翻頁機制（spec v2 §2 缺口1）。偵測不到就明說 none_detected，不臆造。"""
+    """確定性偵測翻頁機制（spec v2 §2 缺口1）。偵測不到就明說 none_detected，不臆造。
+
+    四個訊號依可靠度排序。第四個（列表頁裡的頁碼連結）是後補的——原本只看入口
+    URL **自己** 的 query，但 `?page=2` 通常出現在頁面裡的連結上，這是傳統新聞站
+    最常見的翻頁形式，漏掉它等於大多數站都判成 none_detected。
+    """
     for source_url in (chosen_api, entry_url):
         params = {
             key.lower()
@@ -491,6 +501,26 @@ def _detect_pagination(
             "example_url": urljoin(str(entry_url or ""), href.group(1)) if href else None,
             "note": "HTML 有 <link rel=next>；沿用其 href 當下一頁。",
         }
+
+    # ④ 列表頁裡的頁碼連結：<a href="?page=2">2</a>。entry_url 自己沒有參數，
+    #    但頁面上有——這是傳統新聞站最常見的形式。
+    for row in link_samples or []:
+        url = str((row or {}).get("url") or "")
+        if not url:
+            continue
+        for key, _ in parse_qsl(urlparse(url).query, keep_blank_values=True):
+            if key.lower() in _PAGINATION_PARAMS:
+                return {
+                    "type": "query_param",
+                    "param": key.lower(),
+                    "example_url": url,
+                    "discovered_in": "listing_page_link",
+                    "note": (
+                        f"列表頁有帶 {key.lower()} 的頁碼連結；以該參數遞增翻頁，"
+                        "遵守 constraints.max_pages 上限。"
+                    ),
+                }
+
     return {"type": "none_detected", "note": "未偵測到確定性翻頁訊號；預設只抓第 1 頁。"}
 
 
@@ -775,6 +805,10 @@ def collect_evidence(state: SpiderForgeState) -> dict:
         entry_url=recon_report.get("final_url") or state.get("site_url") or "",
         api_body=api_body,
         entry_html=entry_html,
+        link_samples=[
+            *(recon_report.get("link_samples") or []),
+            *(entry_http.get("link_samples") or []),
+        ],
     )
     published_at_probe = _probe_published_at(
         feed_candidates=recon_report.get("feed_candidates") or [],

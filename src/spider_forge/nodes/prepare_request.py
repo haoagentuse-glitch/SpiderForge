@@ -20,7 +20,9 @@ from .base import Node
 # 品質閘門的通用預設（站台沒指定時用）。
 _DEFAULT_VALIDATION = {
     "min_content_chars": 40,
-    "max_age_days": 30,
+    # 歷史抓取前提：不設時效窗。原本預設 30 天會把所有歷史文章判成 date_too_old，
+    # 等於歷史模式必死。要做「只收新文章」的監控場景，在站台 YAML 設回 max_age_days。
+    "max_age_days": None,
     "min_valid_items": 5,
     "min_unique_ratio": 0.8,
 }
@@ -96,7 +98,9 @@ class PrepareRequest(Node):
             "sample_urls": sample_urls[:5],
             "access_mode": access_mode,
             "constraints": {
-                "max_pages": 2,
+                # 歷史抓取前提：翻到第 10 頁（原本 2 頁是監控場景的設定）。
+                # 沒有「抓到重複就停」的機制之前，這個上限就是唯一的煞車。
+                "max_pages": 10,
                 "validation_probe_items": 20,
                 **(state.get("constraints") or {}),
             },

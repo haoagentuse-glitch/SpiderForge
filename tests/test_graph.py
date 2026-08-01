@@ -18,11 +18,15 @@ def t_minimal_request_gets_operational_defaults():
         and result["topic_gate"]["mode"] == "off"  # 通用預設不強制（階段5 領域抽離）
         and result["topic_gate"]["provider"] == "gemini"
         and result["max_retries"] == 2
-        and result["constraints"]["max_pages"] == 2
+        # 歷史抓取前提（2026-08-02）：翻頁上限 10、不設時效窗。
+        # 監控場景要「只收新文章」的話，在站台 YAML 設回 max_age_days。
+        and result["constraints"]["max_pages"] == 10
+        and result["validation"]["max_age_days"] is None
     )
     return ok, (
         f"prefix={result['source_prefix']} retries={result['max_retries']} "
-        f"domains={result['validation']['allowed_domains']}"
+        f"max_pages={result['constraints']['max_pages']} "
+        f"max_age_days={result['validation']['max_age_days']}"
     )
 
 
