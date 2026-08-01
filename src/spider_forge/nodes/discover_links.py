@@ -12,8 +12,11 @@
 2. **URL pattern（程式，使用者設定）**——`article_url_patterns` / `excluded`。
    **哪個版面**的精確控制只能靠這層：模型分不出「商業版 vs 體育版」，那是
    使用者意圖不是網頁裡的事實。
-3. **模型排序**——Gemini 主力、Ollama fallback、啟發式兜底。負責「導覽 vs 文章」，
-   讓沒有設定 pattern 的新站第一次跑也不會荒謬失敗。
+3. **模型排序**——依序試 Gemini → Ollama → 啟發式。負責「導覽 vs 文章」，讓沒有
+   設定 pattern 的新站第一次跑也不會荒謬失敗。
+   刻意不說「Gemini 主力」：實測 flash-lite free tier 是 **RPD 500**，用完就整天
+   429（等 40 秒不會恢復）。所以這是**機會性使用**——有額度就享受它的品質，
+   沒有就退 Ollama，兩者都不可用還有啟發式。降級原因記在 `link_discovery`。
 
 三層都失敗時退回啟發式（連結文字長度 + 路徑深度 + 末段像 id），BBC 實測這組
 在前 2 名命中 2/2；但它只有一個站的驗證，所以擺在最後而不是最前。
@@ -60,6 +63,7 @@ class DiscoverArticleLinks(Node):
     def __init__(self, *, limit: int = 2, picker=None):
         self._limit = limit
         self._picker = picker
+        self._fallback_reason = ""
 
     # ── 三層過濾 ────────────────────────────────────────────────────────
     def _candidates(self, state: SpiderForgeState) -> list[dict]:
@@ -93,13 +97,18 @@ class DiscoverArticleLinks(Node):
         if self._picker is not None:
             return list(self._picker(rows)), "injected"
 
+        self._fallback_reason = ""
         try:
             from ..clients.links import pick_article_links
 
             picked = pick_article_links(rows)
             if picked:
                 return picked, "gemini"
+            self._fallback_reason = "gemini 回空清單"
         except Exception as exc:  # noqa: BLE001 — 挑連結失敗不該中斷整條流程
+            # 429 是每日額度用完（實測 flash-lite free tier RPD=500，等 40 秒不會恢復），
+            # 靜默降級會讓人以為模型在運作，所以原因要留在 state 裡而不只是印一行。
+            self._fallback_reason = str(exc)[:200]
             print(f"[discover_links] Gemini 不可用，改用本地模型：{exc}")
 
         try:
@@ -116,7 +125,9 @@ class DiscoverArticleLinks(Node):
             picked = [int(i) for i in (result.get("article_indices") or []) if int(i) in valid]
             if picked:
                 return picked, "ollama"
+            self._fallback_reason += "；ollama 回空清單"
         except Exception as exc:  # noqa: BLE001
+            self._fallback_reason += f"；ollama: {str(exc)[:150]}"
             print(f"[discover_links] 本地模型也不可用，退回啟發式：{exc}")
 
         ordered = sorted(rows, key=lambda r: _heuristic_score(r["url"], r["text"]), reverse=True)
@@ -152,5 +163,10 @@ class DiscoverArticleLinks(Node):
                 "candidates": len(rows),
                 "picked": urls[: self._limit],
                 "supplied_sample_urls": len(supplied),
+                # 降級原因要留下來：Gemini 撞到每日額度時會安靜地退到 ollama，
+                # 沒有這欄就看不出「模型其實沒在運作」。
+                "fallback_reason": self._fallback_reason or None,
+                # sample_urls 若已填滿 limit，模型挑的其實一個都沒用到。
+                "model_picks_used": max(0, self._limit - len(supplied)),
             },
         }
