@@ -60,7 +60,10 @@ class DiscoverArticleLinks(Node):
     預設 None → 呼叫時才 late-bind Gemini，失敗退 Ollama，再失敗退啟發式。
     """
 
-    def __init__(self, *, limit: int = 2, picker=None):
+    # limit=3 而非 2：多一個明細樣本讓產碼模型看到更多版型變化（BBC 卡在
+    # insufficient_items 正是 selector 只吃到一種版型）；同時讓 sample_urls
+    # 已填滿 2 個時，模型挑的仍有一個名額能進去。成本只多抓一個頁面。
+    def __init__(self, *, limit: int = 3, picker=None):
         self._limit = limit
         self._picker = picker
         self._fallback_reason = ""

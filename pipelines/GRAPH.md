@@ -187,9 +187,27 @@ flowchart TD
 - [x] **①②③ `discover_links` 節點**（commit 見變更記錄）——插在 `strategy_decision`
       與 `collect_evidence` 之間。三層過濾 + 三段 fallback（Gemini → Ollama → 啟發式）。
       用 BBC 實抓的 30 個連結鎖成回歸測試（`tests/fixtures/bbc_business_links.json`）。
+- [x] **limit 2 → 3** —— 產碼模型多看一個版型（BBC 卡在 `insufficient_items` 正是
+      selector 只吃到一種版型）；同時讓 `sample_urls` 填滿 2 個時，模型挑的仍有
+      一個名額進得去（實測：method=gemini、model_picks_used=1）
 - [ ] ⑤ 樣本驗證 + 有界重試 —— 下一步
-- [ ] `run --site <yaml>` 補 CLI 缺口（validation 目前只能從站台 YAML 進入，見
-      `batch.py:run_site`；`run` 子命令組不出來）
+- [x] `run --site <yaml>` / `batch --site <yaml>` —— 不必再靠環境變數傳站台設定
+
+### ③ 模型挑選的實測（2026-08-02，真實 Gemini 呼叫）
+
+把 BBC 的 21 個候選（硬性排除後）送進 `gemini-3.5-flash-lite`：
+
+```
+1. ✓ /sport/football/articles/…  「Fifa scraps controversial World Cup…」
+2. ✓ /news/articles/cr7k49xjzzeo 「AI firms must answer for rogue bots…」
+3. ✓ /news/articles/c8x274xxxpwo 「India wants to join the strawberry…」
+4. ✓ /news/articles/c0jl8v23qwgo 「The Chinese robot army transforming…」
+5. ✓ /news/articles/c62q7w003lro 「BP puts North Sea business up for sale」
+```
+
+**精確率與召回率都是 100%**（那 30 個連結裡的真文章正好是這 5 篇，零誤判）。
+但**第 1 名是足球新聞**——再次印證「模型分不出版面」，`excluded_url_patterns: ['/sport/']`
+仍然是把它擋掉的唯一手段。三層分工的必要性至此有了直接證據，不再只是推論。
 
 ### ①②③ 的實測對照（BBC 真實資料，非模擬）
 
@@ -204,6 +222,8 @@ flowchart TD
 
 ## 變更記錄
 
+- 2026-08-02（下午）：換新 API key 後實測 Gemini 挑選 5/5 完美；limit 2→3 讓模型
+  在 sample_urls 之外仍有名額。前一把 key 是被排程任務在早上 6:00 用完的。
 - 2026-08-02：使用者提供 Gemini Free Tier 實際額度（RPM 15–30／RPD 1,000–1,500），
   據此翻案模型主從：③ 改為 Gemini 主力、Ollama fallback。原判斷建立在「Gemini 要
   付費」這個未查證的假設上。
