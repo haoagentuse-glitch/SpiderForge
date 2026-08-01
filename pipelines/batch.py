@@ -18,6 +18,7 @@ import yaml
 from spider_forge.clients.coder import drain_usage
 from spider_forge.config import SITE_QUEUE_PATH, run_dir
 from .pipeline import build_pipeline
+from .profiles import apply, resolve
 from spider_forge.runs.ledger import append_run, summarize
 
 
@@ -54,10 +55,11 @@ def run_site(
     max_retries: int = 2,
     *,
     run_id: str | None = None,
+    profile: dict | None = None,
 ) -> dict:
     drain_usage()  # usage 生命週期以單站為界；先清除任何舊進程殘留
     init = {
-        **site,
+        **apply(profile or {}, site),   # 站台 YAML 的設定優先於 profile
         "max_retries": max_retries,
     }  # retry_count/kimi_used 等內部欄位由 prepare_request 初始化（見 state.ForgeInput）
     tid = run_id or f"{site.get('source_prefix', 'site')}-{uuid.uuid4().hex[:8]}"
@@ -130,6 +132,7 @@ def run_one(
     *,
     max_retries: int = 2,
     run_id: str | None = None,
+    profile: dict | None = None,
 ) -> dict:
     """跑單站並保證成功、死信或例外都留下 ledger 與 result.json。"""
     tid = run_id or f"{site.get('source_prefix', 'site')}-{uuid.uuid4().hex[:8]}"
@@ -140,6 +143,7 @@ def run_one(
             site,
             max_retries=max_retries,
             run_id=tid,
+            profile=profile,
         )
     except Exception as exc:  # noqa: BLE001 — 一站崩潰不可丟失紀錄
         traceback.print_exc()
@@ -171,13 +175,15 @@ def run_batch(
     only: list[str] | None = None,
     *,
     max_retries: int = 2,
+    profile: str | dict | None = None,
 ) -> list[dict]:
+    settings = profile if isinstance(profile, dict) else resolve(profile)
     sites = load_sites(only)
     graph = build_pipeline()
     results = []
     for site in sites:
         print(f"\n===== {site['site_name']} ({site['source_prefix']}) =====", flush=True)
-        rec = run_one(graph, site, max_retries=max_retries)
+        rec = run_one(graph, site, max_retries=max_retries, profile=settings)
         print(
             f"  -> {rec.get('status')} | strategy={rec.get('strategy')} "
             f"retry={rec.get('retry_count')} items={rec.get('item_count')} "

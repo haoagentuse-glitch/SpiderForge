@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 from spider_forge.observability import setup_tracing
 from .pipeline import build_pipeline
 from .batch import run_batch, run_one
+from .doctor import report, run_checks
+from .profiles import PROFILES, apply, resolve
 from spider_forge.runs.ledger import summarize
 from spider_forge.config import (
     REQUESTS_DIR,
@@ -84,6 +86,7 @@ def _run(args: argparse.Namespace) -> int:
     if (args.prefix or args.name) and len(urls) != 1:
         raise ValueError("--prefix/--name 只適用單一 URL")
 
+    profile = resolve(args.profile)
     graph = build_pipeline()
     records: list[dict] = []
     for url in urls:
@@ -91,7 +94,7 @@ def _run(args: argparse.Namespace) -> int:
         run_id = _run_id(prefix)
         directory = run_dir(run_id)
         log_path = directory / "pipeline.log"
-        site = {"site_url": url}
+        site = apply(profile, {"site_url": url})
         if args.prefix:
             site["source_prefix"] = args.prefix
         if args.name:
@@ -138,6 +141,7 @@ def _batch(args: argparse.Namespace) -> int:
     records = run_batch(
         list(args.prefix) or None,
         max_retries=args.max_retries,
+        profile=args.profile,
     )
     if any(record.get("status") == "error" for record in records):
         return 1
@@ -162,6 +166,14 @@ def _train_topic(args: argparse.Namespace) -> int:
     return 0 if summary["production_ready"] else 2
 
 
+def _doctor(args: argparse.Namespace) -> int:
+    """試跑前的環境檢查；不呼叫外部 API、不驗證金鑰有效性。"""
+    profile = resolve(args.profile)
+    print(f"起飛前檢查（profile={args.profile}）")
+    print()
+    return report(run_checks(profile))
+
+
 def _paths(_: argparse.Namespace) -> int:
     ensure_runtime_layout()
     print(json.dumps(location_map(), ensure_ascii=False, indent=2))
@@ -184,6 +196,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--prefix", help="單一 URL 的 source_prefix")
     run.add_argument("--name", help="單一 URL 的顯示名稱")
     run.add_argument("--max-retries", type=int, choices=(0, 1, 2), default=2)
+    run.add_argument(
+        "--profile",
+        choices=sorted(PROFILES),
+        default="general",
+        help="領域設定檔（見 pipelines/profiles.py）；finance = 台灣財經/政策主題閘門",
+    )
     run.set_defaults(handler=_run)
 
     batch = subparsers.add_parser(
@@ -202,6 +220,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=2,
         help="每站最多模型修復次數",
     )
+    batch.add_argument(
+        "--profile",
+        choices=sorted(PROFILES),
+        default="general",
+        help="領域設定檔（見 pipelines/profiles.py）；finance = 台灣財經/政策主題閘門",
+    )
     batch.set_defaults(handler=_batch)
 
     status = subparsers.add_parser("status", help="顯示歷史執行摘要與資料位置")
@@ -209,6 +233,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     paths = subparsers.add_parser("paths", help="只顯示輸入、產物與紀錄位置")
     paths.set_defaults(handler=_paths)
+
+    doctor = subparsers.add_parser(
+        "doctor", help="試跑前檢查金鑰、瀏覽器、Ollama、Phoenix、站台清單與目錄"
+    )
+    doctor.add_argument(
+        "--profile",
+        choices=sorted(PROFILES),
+        default="general",
+        help="要檢查哪個設定檔所需的依賴（finance 會多要求 Gemini 金鑰）",
+    )
+    doctor.set_defaults(handler=_doctor)
 
     train = subparsers.add_parser(
         "train-topic",
