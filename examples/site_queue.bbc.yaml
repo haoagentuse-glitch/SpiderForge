@@ -1,0 +1,33 @@
+# BBC Business —— 用來示範「沒有 URL 規則的站要怎麼補設定」。
+#
+# 為什麼一定要 article_url_patterns：沒有規則時，_matches_validation_url 一律放行
+# （evidence.py:389），而挑明細樣本是按頁面連結的順序取前兩個——導覽列必然排在
+# 文章前面，於是拿列表頁當「文章樣本」餵給產碼模型，selector 一定學錯。
+#
+# 下面這組規則用 BBC 實際抓到的 30 個連結離線驗證過：通過 4（全是真文章）、
+# 擋掉 26（導覽、分類頁、登入頁）。
+
+sites:
+  - source_prefix: bbc_business
+    site_name: BBC Business
+    site_url: https://www.bbc.com/business
+
+    # 先給兩篇已知文章，讓證據蒐集一定拿得到真的明細頁樣本
+    # （_discover_detail_urls 優先用 sample_urls）。
+    sample_urls:
+      - https://www.bbc.com/news/articles/cr7k49xjzzeo
+      - https://www.bbc.com/news/articles/c8x274xxxpwo
+
+    validation:
+      allowed_domains: [www.bbc.com]
+      # BBC 的文章一律走 /…/articles/<短 id>
+      article_url_patterns: ['/articles/[a-z0-9]{6,}']
+      excluded_url_patterns:
+        - '#'                 # /business#bbc-main 這類跳過導覽的錨點
+        - '/sport/'           # 體育不屬於商業版面
+        - 'session\.bbc\.com' # 登入／註冊
+      min_content_chars: 200
+      max_age_days: 30
+      # 入口頁的連結取樣只留 30 筆，扣掉導覽後真文章不多，門檻放寬到 3
+      min_valid_items: 3
+      min_unique_ratio: 0.8
