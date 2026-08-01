@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from spider_forge import pipeline
+from pipelines import pipeline
 from spider_forge.shared import repair
 from spider_forge.shared.fixture import build_fixture_spec
 from spider_forge.shared.materials import (

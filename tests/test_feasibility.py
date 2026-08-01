@@ -10,7 +10,7 @@ import json
 import time
 from pathlib import Path
 
-from spider_forge import pipeline as graph
+from pipelines import pipeline as graph
 
 
 def _cleanup(path_str: str | None) -> None:

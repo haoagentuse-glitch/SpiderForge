@@ -8,14 +8,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from spider_forge import pipeline
+from pipelines import pipeline
 from spider_forge.clients import browser, coder, judge
 from spider_forge.output import artifacts
 from spider_forge.runs import ledger
 from spider_forge.shared import evidence, generation, repair
 from spider_forge.schemas import DEFAULT_TARGET_SCHEMA
 
-batch = importlib.import_module("spider_forge.runs.batch")
+batch = importlib.import_module("pipelines.batch")
 
 
 def _base_state() -> dict:

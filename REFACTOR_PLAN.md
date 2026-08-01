@@ -52,7 +52,8 @@ spider_forge/                    repo 根
 
 依賴方向單向：**pipeline → 積木**，積木永不 import pipeline，積木彼此不互相 import（只由 pipeline 組裝）。這保證改流程不動積木、改積木不動別的積木。
 
-> 「管線是否獨立成頂層 `pipelines/` 目錄」列為階段 6 的可選項。現況 `pipeline.py` 已是唯一組裝點、已和積木分離；且 `python -m spider_forge` 入口留套件內較標準。預設不獨立拆，除非使用者要。
+> **已於階段 10 執行**（2026-08-01，使用者要求）：管線獨立成頂層 `pipelines/`。
+> 上面這張圖是階段 1–8 的中間形態，最終結構見第 4 節的階段 10 與 README。
 
 ## 3. 鐵律（違反即停）
 
@@ -229,6 +230,49 @@ README 重寫（原本 21 處 `app.spider_forge_system` 指令全失效、目錄
 > `PRIMARY_LLM_PROVIDER`、`FALLBACK_LLM_PROVIDER`、`DATABASE_URL`），已在檔內標註。
 > 要不要真的接上（例如 registry 加 openai provider）由使用者決定。
 > 容器化：舊 Dockerfile 已刪，要重建的話與 Phoenix compose 一起設計。
+
+### 階段 10 — 根目錄四分 + CI（2026-08-01）
+
+**10.1 管線移出函式庫**（原本列為「可選項，除非使用者要」——使用者要了）
+
+根目錄現在一眼看得出四種東西，且**依賴方向單向**：
+
+| 目錄 | 是什麼 | 隨 `pip install` 帶走？ |
+|---|---|---|
+| `src/spider_forge/` | 函式庫（積木與契約）| ✅ |
+| `pipelines/` | 管線 + CLI（本 repo 的應用程式碼）| ❌ |
+| `tests/` | 測試 | ❌ |
+| `Phoenix/` | 觀測服務 | ❌ |
+
+搬動：`pipeline.py` / `cli.py` / `runs/batch.py` → `pipelines/`；`__main__.py` 改到
+`pipelines/`。套件 `__init__.py` 不再匯出 `forge_spider`（那是管線的東西），只留契約。
+
+**為什麼入口也必須跟著搬**：`cli.py` 與 `batch.py` 都需要 pipeline。若入口留在套件內、
+pipeline 移出，套件就得 import 套件外的模組——安裝後直接壞掉。這是「函式庫不含管線」
+的必然結果，不是可以繞過的細節。
+
+**代價（使用者已確認接受）**：執行指令改成 `python -m pipelines.cli run --url ...`
+（從 repo 根跑）。`pip install spider_forge` 的人拿到的是積木，管線自己組——這正是
+torch 不含 train.py 的形狀，也是本專案最初的訴求。
+
+**10.2 新增三個結構測試**（防止結構再退化）
+
+- `t_library_never_imports_the_pipeline_layer` — **最重要的一條**：函式庫 import 了
+  `pipelines` 就是把套件弄壞了
+- `t_pipeline_layer_is_not_installed_as_a_package` — pyproject 只收 `src/`
+- `t_execution_entries_only_depend_on_pipeline` — CLI/批次不自己 import 節點
+
+**10.3 `tests/conftest.py`**：測試強制離線（本機 `.env` 若設了 Phoenix endpoint，
+背景 exporter 會重試到逾時、洗版又拖慢測試）。
+
+**10.4 CI**（`.github/workflows/ci.yml`）：checkout → uv sync → compileall → pytest →
+CLI 冒煙。只放「離線那一層」——活站測試與 eval 刻意不進 CI（網站改版就紅，
+會變成沒人理的假警報）。順手修了 `uv.lock` 與 pyproject 不同步（Phoenix 移到
+optional 後沒重新 lock，CI 會踩到）。
+
+**10.5 驗收**：150 passed；CI 的四個步驟在本機逐一跑過（compileall / pytest /
+`python -m pipelines.cli --help` / build_pipeline 得到 19 節點）。
+⚠️ 未驗證：Linux runner 上的實際行為——本機只有 Windows，第一次 push 後看 Actions 才算數。
 
 ## 5.5 核心價值驗收（實測，2026-08-01）
 

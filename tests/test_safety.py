@@ -15,7 +15,7 @@ from spider_forge.clients import coder as coder_client
 from spider_forge.shared import sandbox as runner_module
 from spider_forge.shared.sandbox import sandbox_env
 
-batch_module = importlib.import_module("spider_forge.runs.batch")
+batch_module = importlib.import_module("pipelines.batch")
 
 _SECRET_KEYS = ("DATABASE_URL", "DEEPSEEK_API_KEY", "KIMI_API_KEY", "OLLAMA_HOST",
                 "GEMINI_API_KEY", "POSTGRES_PASSWORD", "FINMIND_TOKEN")

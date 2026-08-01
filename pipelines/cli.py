@@ -12,11 +12,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .observability import setup_tracing
+from spider_forge.observability import setup_tracing
 from .pipeline import build_pipeline
-from .runs.batch import run_batch, run_one
-from .runs.ledger import summarize
-from .config import (
+from .batch import run_batch, run_one
+from spider_forge.runs.ledger import summarize
+from spider_forge.config import (
     REQUESTS_DIR,
     ensure_runtime_layout,
     location_map,
@@ -147,7 +147,7 @@ def _batch(args: argparse.Namespace) -> int:
 
 
 def _train_topic(args: argparse.Namespace) -> int:
-    from .tools.topic_training import train_topic_artifact
+    from spider_forge.tools.topic_training import train_topic_artifact
 
     summary = train_topic_artifact(
         args.gold_jsonl,

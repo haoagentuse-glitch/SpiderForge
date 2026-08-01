@@ -5,14 +5,14 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-PACKAGE_DIR = Path(__file__).resolve().parents[1] / "src" / "spider_forge"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_DIR = REPO_ROOT / "src" / "spider_forge"
+PIPELINES_DIR = REPO_ROOT / "pipelines"
 NODES_DIR = PACKAGE_DIR / "nodes"
+# 套件根只放「函式庫的公共模組」；管線與 CLI 在 repo 根的 pipelines/。
 ROOT_PYTHON_FILES = {
     "__init__.py",
-    "__main__.py",
-    "cli.py",
     "config.py",
-    "pipeline.py",
     "state.py",
 }
 
@@ -59,12 +59,39 @@ def t_control_plane_has_no_crawler_runtime_import():
     return not violations, f"violations={violations}"
 
 
+def t_library_never_imports_the_pipeline_layer():
+    """**依賴單向**：pipelines → spider_forge，反過來絕不允許。
+
+    這是「函式庫 / 管線」分家的核心不變式。一旦函式庫 import 了 pipelines，
+    `pip install spider_forge` 就會壞掉（pipelines 不隨套件安裝）。
+    """
+    violations: list[str] = []
+    for path in PACKAGE_DIR.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        for node in ast.walk(_tree(path)):
+            modules = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else []
+            )
+            for module in modules:
+                if module.split(".", 1)[0] == "pipelines":
+                    violations.append(
+                        f"{path.relative_to(PACKAGE_DIR)}:{node.lineno}:{module}"
+                    )
+    return not violations, f"violations={violations}"
+
+
 def t_execution_entries_only_depend_on_pipeline():
+    """CLI 與批次執行器只透過 pipeline.py 取得流程，不自己 import 節點。"""
     violations: list[str] = []
     for path in (
-        PACKAGE_DIR / "__main__.py",
-        PACKAGE_DIR / "cli.py",
-        PACKAGE_DIR / "runs" / "batch.py",
+        PIPELINES_DIR / "__main__.py",
+        PIPELINES_DIR / "cli.py",
+        PIPELINES_DIR / "batch.py",
         PACKAGE_DIR / "tools" / "topic_training.py",
     ):
         for node in ast.walk(_tree(path)):
@@ -72,10 +99,18 @@ def t_execution_entries_only_depend_on_pipeline():
                 continue
             module = node.module or ""
             if module.startswith("nodes") or ".nodes" in module:
-                violations.append(
-                    f"{path.relative_to(PACKAGE_DIR)}:{node.lineno}:{module}"
-                )
+                violations.append(f"{path.name}:{node.lineno}:{module}")
     return not violations, f"violations={violations}"
+
+
+def t_pipeline_layer_is_not_installed_as_a_package():
+    """pipelines/ 是這個 repo 的應用程式碼，不隨套件發布（pyproject 只收 src/）。"""
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    declares_src_only = 'where = ["src"]' in pyproject
+    mentions_pipelines = "pipelines" in pyproject
+    return declares_src_only and not mentions_pipelines, (
+        f'where=["src"]:{declares_src_only} pyproject 提到 pipelines:{mentions_pipelines}'
+    )
 
 
 def t_package_root_only_contains_public_control_modules():
@@ -113,7 +148,7 @@ def t_state_layers_partition_the_whole_state():
 
 def t_graph_entry_only_accepts_input_fields():
     """graph 入口擋掉內部欄位：呼叫端不能（也不必）自己塞 retry_count 這類狀態。"""
-    from spider_forge import pipeline
+    from pipelines import pipeline
     from spider_forge.state import ForgeInput
 
     accepted = set(pipeline.build_pipeline().get_input_jsonschema()["properties"])
@@ -195,6 +230,8 @@ TESTS = [
     t_graph_entry_only_accepts_input_fields,
     t_forge_result_returns_only_output_fields,
     t_control_plane_has_no_crawler_runtime_import,
+    t_library_never_imports_the_pipeline_layer,
     t_execution_entries_only_depend_on_pipeline,
+    t_pipeline_layer_is_not_installed_as_a_package,
     t_package_root_only_contains_public_control_modules,
 ]

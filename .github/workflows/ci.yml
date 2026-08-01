@@ -1,0 +1,38 @@
+name: CI
+
+# 只跑得起「離線」那一層：148+ 個測試不連網站、不呼叫模型、不燒 API 額度。
+# 活站測試與 eval（產出品質趨勢）刻意不放這裡——那些會因為網站改版而紅，
+# 變成沒人理的假警報。它們屬於人工驗收（tests/manual/）。
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 安裝相依套件（含測試與觀測層）
+        run: uv sync --extra test --extra observability
+
+      - name: 編譯全部模組（先擋語法錯，比測試快）
+        run: uv run python -m compileall -q src/spider_forge pipelines
+
+      - name: 測試
+        run: uv run python -m pytest tests/ -q
+
+      - name: 冒煙——CLI 進得去、管線組得起來
+        run: |
+          uv run python -m pipelines.cli --help
+          uv run python -c "from pipelines.pipeline import build_pipeline; print('nodes:', len(build_pipeline().get_graph().nodes))"

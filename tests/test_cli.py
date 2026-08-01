@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from spider_forge import cli
+from pipelines import cli
 
 
 def t_cli_exposes_all_supported_workflows():

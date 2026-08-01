@@ -1506,11 +1506,8 @@ name = "spider-forge"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "arize-phoenix-client" },
-    { name = "arize-phoenix-otel" },
     { name = "langgraph" },
     { name = "numpy" },
-    { name = "openinference-instrumentation-langchain" },
     { name = "playwright" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -1521,17 +1518,22 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+observability = [
+    { name = "arize-phoenix-client" },
+    { name = "arize-phoenix-otel" },
+    { name = "openinference-instrumentation-langchain" },
+]
 test = [
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "arize-phoenix-client" },
-    { name = "arize-phoenix-otel", specifier = ">=0.16.0" },
+    { name = "arize-phoenix-client", marker = "extra == 'observability'" },
+    { name = "arize-phoenix-otel", marker = "extra == 'observability'", specifier = ">=0.16.0" },
     { name = "langgraph", specifier = ">=1.2" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "openinference-instrumentation-langchain" },
+    { name = "openinference-instrumentation-langchain", marker = "extra == 'observability'" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4,<9" },
@@ -1541,7 +1543,7 @@ requires-dist = [
     { name = "scrapy-playwright", specifier = ">=0.0.48" },
     { name = "tzdata", specifier = ">=2025.2" },
 ]
-provides-extras = ["test"]
+provides-extras = ["test", "observability"]
 
 [[package]]
 name = "tenacity"

@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from spider_forge import pipeline
+from pipelines import pipeline
 from spider_forge.clients.coder import drain_usage
 
 # 節點已 class 化（階段8）：直接用 pipeline 拼好的實例，設定與正式流程完全一致。

@@ -18,16 +18,30 @@ uv sync
 ```
 
 ```bash
-.venv/Scripts/python.exe -m spider_forge run --url "https://example.com/news"
+.venv/Scripts/python.exe -m pipelines.cli run --url "https://example.com/news"
 ```
 
 測試全部離線：不碰真實網站、不呼叫外部模型、不消耗 API 額度。`run` 會兩者都做。
 
 ## 模組邊界
 
-- `pipeline.py` 是唯一流程組裝入口，負責節點順序與分支。
+根目錄先分四塊,對應四種不同的東西:
+
+| 目錄 | 是什麼 | 會不會隨 `pip install` 帶走 |
+|---|---|---|
+| `src/spider_forge/` | **函式庫**——積木與契約 | ✅ 會 |
+| `pipelines/` | **管線**——把積木拼成流程 + CLI | ❌ 不會（這是本 repo 的應用程式碼）|
+| `tests/` | **測試** | ❌ 不會 |
+| `Phoenix/` | **觀測服務**（compose）| ❌ 不會 |
+
+這正是 pytorch 的分法:`torch` 是函式庫,你的 `train.py` 是自己的程式。
+`pip install spider_forge` 拿到的是積木,管線自己組——所以**依賴方向永遠是
+`pipelines → spider_forge`,反過來絕不允許**（有測試鎖住,一旦違反套件就裝不起來）。
+
+函式庫內部:
+
 - `nodes/` 是節點積木庫：一個節點一個 class（`__init__` 存設定 / `__call__` 執行）。
-  加新節點 = 這裡多一個檔 + `pipeline.py` 拼裝一行；節點不得互相 import（有測試鎖住）。
+  加新節點 = 這裡多一個檔 + `pipelines/pipeline.py` 拼裝一行；節點不得互相 import（有測試鎖住）。
 - `schemas/` 是資料形狀的唯一來源：`outputs.py` 定義要抓什麼欄位（pydantic `Article`），
   `llm_io.py` 是模型輸出的 schema。改抓取欄位只改這裡。
 - `prompts/` 每個呼叫 LLM 的節點一個 prompt 檔，由節點注入。
@@ -36,9 +50,13 @@ uv sync
 - `sandbox_runtime/fixture_runner.py` 是離線重播引擎，只在**沙盒子程序**內以檔案路徑執行，
   只吃 JSON fixture 契約、不 import 控制層；控制層也不 import 它。
   想換成別的重播引擎：`SPIDERFORGE_FIXTURE_RUNNER=<module>`（+ `..._CWD`），遵守同一份契約即可。
+- `observability/` 追蹤的啟用與 LLM span（沒設 Phoenix endpoint 就是完全的 no-op）。
 - `output/` 管理候選、正式版本、歷史版本及人工回滾。
-- `runs/` 管理追加式執行紀錄。
+- `runs/ledger.py` 管理追加式執行紀錄。
 - `config.py` 是設定與執行期路徑的唯一來源。
+
+管線層 `pipelines/`:`pipeline.py` 是唯一流程組裝入口（節點順序與所有分支都在這裡）、
+`batch.py` 是批次執行器、`cli.py` 是命令列入口。
 
 `state.py` 把流程狀態分成三層：`ForgeInput`（呼叫端該給的）、`ForgeInternal`（節點間中間態）、
 `ForgeOutput`（一次執行要交出的產出）。graph 入口只收 `ForgeInput`，`forge_result()` 只回產出。
@@ -85,18 +103,23 @@ flowchart TD
 
 ```text
 spider_forge/                    repo 根
-├── pyproject.toml               套件定義（src layout）+ uv.lock
-├── src/spider_forge/            ① 函式庫本身
+├── pyproject.toml               套件定義（只收 src/）+ uv.lock
+├── src/spider_forge/            ① 函式庫（積木）
 │   ├── nodes/                   ★ 節點積木庫（17 個節點，一節點一檔）
 │   ├── schemas/                 資料形狀（outputs.py / llm_io.py）
 │   ├── prompts/                 各節點的 prompt
 │   ├── clients/                 browser / coder / judge / page / topic + registry + env
 │   ├── shared/                  節點共用 helper 與領域服務
 │   ├── sandbox_runtime/         沙盒子程序內執行的離線重播引擎
+│   ├── observability/           Phoenix 追蹤（客戶端；沒設定就 no-op）
 │   ├── output/  runs/  tools/
-│   ├── pipeline.py              ② 管線：把積木拼成流程
-│   ├── cli.py  __main__.py  config.py  state.py
+│   └── config.py  state.py
+├── pipelines/                   ② 管線（不隨套件安裝）
+│   ├── pipeline.py              唯一組裝點：節點順序與所有分支
+│   ├── batch.py                 批次執行器
+│   └── cli.py  __main__.py      命令列入口
 ├── tests/                       ③ 測試（含 manual/ 人工逐關工具）
+├── Phoenix/                     ④ 觀測服務（docker compose）
 ├── examples/                    站台清單範例
 └── runtime/                     執行期產物（gitignored）
 ```
@@ -140,15 +163,15 @@ runtime/
 ## 執行
 
 ```bash
-.venv/Scripts/python.exe -m spider_forge run --url "https://example.com/news" --max-retries 0
+.venv/Scripts/python.exe -m pipelines.cli run --url "https://example.com/news" --max-retries 0
 ```
 
 ```bash
-.venv/Scripts/python.exe -m spider_forge batch
+.venv/Scripts/python.exe -m pipelines.cli batch
 ```
 
 ```bash
-.venv/Scripts/python.exe -m spider_forge status
+.venv/Scripts/python.exe -m pipelines.cli status
 ```
 
 `run` 可重複 `--url`，或用 `--file` 給每行一個 URL 的檔案；`batch` 後面接
@@ -157,10 +180,23 @@ runtime/
 當函式庫用：
 
 ```python
-from spider_forge import forge_spider
+from pipelines.pipeline import forge_spider
 
 result = forge_spider("https://example.com/news", max_retries=0)
 print(result["status"], result.get("spider_path"))
+```
+
+想自己組流程（換節點順序、加一關），就照 `pipelines/pipeline.py` 的寫法用積木拼：
+
+```python
+from langgraph.graph import START, StateGraph
+from spider_forge.nodes import Recon, PrepareRequest
+from spider_forge.state import SpiderForgeState, ForgeInput
+
+builder = StateGraph(SpiderForgeState, input_schema=ForgeInput)
+builder.add_node("prepare_request", PrepareRequest())
+builder.add_node("recon", Recon())
+builder.add_edge(START, "prepare_request")
 ```
 
 ### 逐關人工審查
@@ -188,7 +224,7 @@ docker compose -f Phoenix/compose.yaml up -d
 ```
 
 在 **repo 根的 `.env`** 設 `PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces`,
-之後 `spider_forge run` 就會把 trace 送進 <http://localhost:6006>。**沒設這個變數時完全不啟用**
+之後 `pipelines.cli run` 就會把 trace 送進 <http://localhost:6006>。**沒設這個變數時完全不啟用**
 （不 import Phoenix、零開銷），所以不裝觀測套件也照樣跑。
 
 兩份 `.env` 按**讀者**分工，不要互搬：

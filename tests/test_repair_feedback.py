@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from spider_forge import pipeline as graph
+from pipelines import pipeline as graph
 from spider_forge.shared import repair as repair_stage
 from spider_forge.schemas import DEFAULT_TARGET_SCHEMA
 

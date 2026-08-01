@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from spider_forge import pipeline as graph
+from pipelines import pipeline as graph
 
 
 def _no_judge():

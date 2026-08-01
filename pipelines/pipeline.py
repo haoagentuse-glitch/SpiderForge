@@ -8,23 +8,23 @@ from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from .nodes.block_gate import ContentBlockGate
-from .nodes.diagnose import DiagnoseFailure
-from .nodes.escalate import EscalateHuman
-from .nodes.evidence import CollectEvidence
-from .nodes.fixture import FixtureTest
-from .nodes.generate import GenerateSpider
-from .nodes.persist import PersistSpider
-from .nodes.prepare_request import PrepareRequest
-from .nodes.preflight import GenerationPreflight
-from .nodes.recon import Recon
-from .nodes.repair import RepairCode
-from .nodes.sandbox import SandboxTest
-from .nodes.strategy import StrategyDecision
-from .nodes.topic_gate import TopicGate
-from .nodes.triage import FeasibilityTriage
-from .nodes.validate import ValidateOutput
-from .state import (
+from spider_forge.nodes.block_gate import ContentBlockGate
+from spider_forge.nodes.diagnose import DiagnoseFailure
+from spider_forge.nodes.escalate import EscalateHuman
+from spider_forge.nodes.evidence import CollectEvidence
+from spider_forge.nodes.fixture import FixtureTest
+from spider_forge.nodes.generate import GenerateSpider
+from spider_forge.nodes.persist import PersistSpider
+from spider_forge.nodes.prepare_request import PrepareRequest
+from spider_forge.nodes.preflight import GenerationPreflight
+from spider_forge.nodes.recon import Recon
+from spider_forge.nodes.repair import RepairCode
+from spider_forge.nodes.sandbox import SandboxTest
+from spider_forge.nodes.strategy import StrategyDecision
+from spider_forge.nodes.topic_gate import TopicGate
+from spider_forge.nodes.triage import FeasibilityTriage
+from spider_forge.nodes.validate import ValidateOutput
+from spider_forge.state import (
     KILL_FAILURE_CLASSES,
     ForgeInput,
     SpiderForgeState,
