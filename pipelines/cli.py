@@ -21,7 +21,7 @@ from spider_forge.config import (
 from spider_forge.observability import setup_tracing
 from spider_forge.runs.ledger import summarize
 
-from .batch import run_batch, run_one
+from .batch import load_sites, run_batch, run_one
 from .doctor import report, run_checks
 from .pipeline import build_pipeline
 from .profiles import PROFILES, apply, resolve
@@ -71,9 +71,31 @@ def _run_id(prefix: str) -> str:
     return f"{prefix}-{timestamp}-{uuid.uuid4().hex[:8]}"
 
 
+def _site_defaults(args: argparse.Namespace) -> dict:
+    """--site 指定的站台設定（validation / sample_urls 等）。
+
+    validation 規則只能從站台 YAML 進入 state（見 batch.run_site），所以沒有
+    這個參數時，run 對「需要 URL 規則的站」等於不能用——第一次跑任何新站都會
+    因為挑不出文章連結而失敗。
+    """
+    if not getattr(args, "site", None):
+        return {}
+    sites = load_sites(queue_path=args.site)
+    if args.prefix:
+        sites = [s for s in sites if s.get("source_prefix") == args.prefix]
+    if len(sites) != 1:
+        raise ValueError(
+            f"{args.site} 有 {len(sites)} 個站台；請用 --prefix 指定要跑哪一個"
+        )
+    return dict(sites[0])
+
+
 def _run(args: argparse.Namespace) -> int:
     ensure_runtime_layout()
+    site_defaults = _site_defaults(args)
     urls = list(args.url or [])
+    if not urls and site_defaults.get("site_url"):
+        urls = [str(site_defaults["site_url"])]
     if args.file:
         urls.extend(_urls_from_file(args.file))
     urls = list(dict.fromkeys(_validate_url(value) for value in urls))
@@ -92,7 +114,7 @@ def _run(args: argparse.Namespace) -> int:
         run_id = _run_id(prefix)
         directory = run_dir(run_id)
         log_path = directory / "pipeline.log"
-        site = apply(profile, {"site_url": url})
+        site = apply(profile, {**site_defaults, "site_url": url})
         if args.prefix:
             site["source_prefix"] = args.prefix
         if args.name:
@@ -144,6 +166,7 @@ def _batch(args: argparse.Namespace) -> int:
         list(args.prefix) or None,
         max_retries=args.max_retries,
         profile=args.profile,
+        queue_path=args.site,
     )
     if any(record.get("status") == "error" for record in records):
         return 1
@@ -204,6 +227,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="general",
         help="領域設定檔（見 pipelines/profiles.py）；finance = 台灣財經/政策主題閘門",
     )
+    run.add_argument(
+        "--site",
+        type=Path,
+        help="站台設定 YAML（validation／sample_urls 等）；比 SPIDERFORGE_SITE_QUEUE 優先",
+    )
     run.set_defaults(handler=_run)
 
     batch = subparsers.add_parser(
@@ -227,6 +255,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(PROFILES),
         default="general",
         help="領域設定檔（見 pipelines/profiles.py）；finance = 台灣財經/政策主題閘門",
+    )
+    batch.add_argument(
+        "--site",
+        type=Path,
+        help="站台設定 YAML（validation／sample_urls 等）；比 SPIDERFORGE_SITE_QUEUE 優先",
     )
     batch.set_defaults(handler=_batch)
 

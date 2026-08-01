@@ -23,10 +23,14 @@ from .pipeline import build_pipeline
 from .profiles import apply, resolve
 
 
-def load_sites(only: list[str] | None = None) -> list[dict]:
-    if not SITE_QUEUE_PATH.is_file():
+def load_sites(
+    only: list[str] | None = None, *, queue_path: Path | None = None
+) -> list[dict]:
+    """讀站台清單；``queue_path`` 優先於 SPIDERFORGE_SITE_QUEUE。"""
+    path = Path(queue_path) if queue_path else SITE_QUEUE_PATH
+    if not path.is_file():
         raise FileNotFoundError(
-            f"找不到站台清單：{SITE_QUEUE_PATH}。"
+            f"找不到站台清單：{path}。"
             "套件不內建站清單，請用環境變數 SPIDERFORGE_SITE_QUEUE 指向自己的 YAML"
             "（格式見 examples/site_queue.taiwan-finance.yaml）。"
         )
@@ -179,9 +183,10 @@ def run_batch(
     *,
     max_retries: int = 2,
     profile: str | dict | None = None,
+    queue_path: Path | None = None,
 ) -> list[dict]:
     settings = profile if isinstance(profile, dict) else resolve(profile)
-    sites = load_sites(only)
+    sites = load_sites(only, queue_path=queue_path)
     graph = build_pipeline()
     results = []
     for site in sites:

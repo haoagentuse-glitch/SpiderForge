@@ -32,7 +32,7 @@ def t_batch_cli_forwards_prefix_and_retry_budget():
     captured = {}
     original = cli.run_batch
 
-    def fake_run_batch(prefixes, *, max_retries, profile):
+    def fake_run_batch(prefixes, *, max_retries, profile, queue_path):
         captured["prefixes"] = prefixes
         captured["max_retries"] = max_retries
         captured["profile"] = profile
@@ -62,7 +62,7 @@ def t_batch_cli_forwards_the_selected_profile():
     captured = {}
     original = cli.run_batch
 
-    def fake_run_batch(prefixes, *, max_retries, profile):
+    def fake_run_batch(prefixes, *, max_retries, profile, queue_path):
         captured["profile"] = profile
         return [{"status": "success"}]
 

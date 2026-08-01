@@ -138,7 +138,7 @@ def t_error_run_records_its_own_usage():
         "summarize": batch_module.summarize,
     }
     try:
-        batch_module.load_sites = lambda only=None: [site]
+        batch_module.load_sites = lambda only=None, **_: [site]
         batch_module.build_pipeline = lambda: FailingGraph()
         batch_module.append_run = captured.append
         batch_module.summarize = lambda: {}
