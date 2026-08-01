@@ -15,6 +15,7 @@ from spider_forge.nodes.escalate import EscalateHuman
 from spider_forge.nodes.evidence import CollectEvidence
 from spider_forge.nodes.fixture import FixtureTest
 from spider_forge.nodes.generate import GenerateSpider
+from spider_forge.nodes.pagination import VerifyPagination
 from spider_forge.nodes.persist import PersistSpider
 from spider_forge.nodes.prepare_request import PrepareRequest
 from spider_forge.nodes.preflight import GenerationPreflight
@@ -43,6 +44,7 @@ recon = Recon()
 feasibility_triage = FeasibilityTriage()
 strategy_decision = StrategyDecision()
 discover_links = DiscoverArticleLinks()
+verify_pagination = VerifyPagination()
 collect_evidence = CollectEvidence()
 generate_spider = GenerateSpider()
 preflight_generated_code = GenerationPreflight()
@@ -128,6 +130,7 @@ def build_pipeline(checkpointer=None):
         ("feasibility_triage", feasibility_triage),
         ("strategy_decision", strategy_decision),
         ("discover_links", discover_links),
+        ("verify_pagination", verify_pagination),
         ("collect_evidence", collect_evidence),
         ("generate_spider", generate_spider),
         ("generation_preflight", preflight_generated_code),
@@ -153,7 +156,8 @@ def build_pipeline(checkpointer=None):
         ["strategy_decision", "escalate_human"],
     )
     builder.add_edge("strategy_decision", "discover_links")
-    builder.add_edge("discover_links", "collect_evidence")
+    builder.add_edge("discover_links", "verify_pagination")
+    builder.add_edge("verify_pagination", "collect_evidence")
     builder.add_edge("collect_evidence", "generate_spider")
     builder.add_edge("generate_spider", "generation_preflight")
     builder.add_conditional_edges(

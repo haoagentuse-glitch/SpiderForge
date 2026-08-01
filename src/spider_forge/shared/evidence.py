@@ -800,7 +800,8 @@ def collect_evidence(state: SpiderForgeState) -> dict:
         api_sample.get("body_excerpt") or chosen_candidate.get("body_excerpt") or ""
     )
     entry_html = str(entry_http.get("body_excerpt") or "")
-    pagination = _detect_pagination(
+    # verify_pagination 節點已實抓驗證過就沿用；沒有才自己偵測（相容舊流程）。
+    pagination = state.get("pagination") or _detect_pagination(
         chosen_api=chosen_api,
         entry_url=recon_report.get("final_url") or state.get("site_url") or "",
         api_body=api_body,

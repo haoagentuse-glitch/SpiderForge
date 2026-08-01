@@ -137,6 +137,20 @@ flowchart TD
     verify -->|"重試耗盡"| escalate["escalate_human<br/><small>新分類 KILL_discovery_unusable</small>"]:::newprog
     verify -->|合格| evidence["collect_evidence<br/><small>確認拿到真文章樣本才往後送</small>"]:::prog
 
+    verify -->|合格| pgn
+
+    subgraph PAGE["🔁 翻頁子圖（已實作）"]
+        direction TB
+        pgn{"⑥ 蒐集翻頁候選<br/><small>入口 query／API 游標／&lt;link rel=next&gt;／<br/>列表頁的 ?page=2 連結</small>"}:::newprog
+        probe{"⑦ 實抓第 2 頁驗證<br/><small>200？有文章連結？<b>與第 1 頁不同？</b><br/>最後一條擋掉「?page 被忽略」</small>"}:::newprog
+    end
+
+    pgn --> probe
+    probe -->|"不通過<br/>換下一個候選"| pgn
+    probe -->|"全部失敗"| firstonly["none_detected<br/><small>誠實降級：只抓第 1 頁</small>"]:::newprog
+    probe -->|通過| evidence
+    firstonly --> evidence
+
     evidence --> generate["generate_spider ⋯ 後續閘門與修復迴圈<br/><small>（維持現狀不動）</small>"]:::paid
 
     classDef prog fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
@@ -190,7 +204,11 @@ flowchart TD
 - [x] **limit 2 → 3** —— 產碼模型多看一個版型（BBC 卡在 `insufficient_items` 正是
       selector 只吃到一種版型）；同時讓 `sample_urls` 填滿 2 個時，模型挑的仍有
       一個名額進得去（實測：method=gemini、model_picks_used=1）
-- [ ] ⑤ 樣本驗證 + 有界重試 —— 下一步
+- [x] **`verify_pagination` 節點** —— 翻頁也走「候選 → 逐一驗證 → 確定才往下放」。
+      偵測不等於可用：`?page=999` 被站方忽略時會回第 1 頁，HTTP 200 ✓、有文章連結 ✓，
+      只有「第 2 頁的文章與第 1 頁比對」擋得住。cursor 型無法預先實抓，放行但標
+      `verified=False`，不假裝驗證過。
+- [ ] ⑤ 明細樣本驗證 + 有界重試 —— 下一步
 - [x] `run --site <yaml>` / `batch --site <yaml>` —— 不必再靠環境變數傳站台設定
 
 ### ③ 模型挑選的實測（2026-08-02，真實 Gemini 呼叫）

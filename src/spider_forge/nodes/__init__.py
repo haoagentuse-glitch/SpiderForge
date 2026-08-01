@@ -16,6 +16,7 @@ from .escalate import EscalateHuman
 from .evidence import CollectEvidence
 from .fixture import FixtureTest
 from .generate import GenerateSpider
+from .pagination import VerifyPagination
 from .persist import PersistSpider
 from .preflight import GenerationPreflight
 from .prepare_request import PrepareRequest
@@ -32,6 +33,7 @@ __all__ = [
     "PrepareRequest",
     "Recon",
     "DiscoverArticleLinks",
+    "VerifyPagination",
     "FeasibilityTriage",
     "StrategyDecision",
     "CollectEvidence",
