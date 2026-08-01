@@ -162,6 +162,16 @@ runtime/
 
 ## 執行
 
+試跑前先檢查環境（不呼叫外部 API、不驗證金鑰有效性，只看該有的東西在不在）：
+
+```bash
+.venv/Scripts/python.exe -m pipelines.cli doctor --profile finance
+```
+
+它會檢查：金鑰（依實際設定的 provider）、Playwright chromium 是否下載、Scrapy、
+Ollama 與 judge 模型、Phoenix、站台清單、runtime 可寫。`FAIL` 代表會直接擋住試跑,
+`WARN` 代表能跑但有疑慮。
+
 ```bash
 .venv/Scripts/python.exe -m pipelines.cli run --url "https://example.com/news" --max-retries 0
 ```
@@ -176,6 +186,22 @@ runtime/
 
 `run` 可重複 `--url`，或用 `--file` 給每行一個 URL 的檔案；`batch` 後面接
 `source_prefix` 只跑指定來源；`paths` 只印資料位置。
+
+### 領域設定檔（profile）
+
+**管線只有一條**，換領域不複製管線、只換一組設定（見 `pipelines/profiles.py`）：
+
+```bash
+.venv/Scripts/python.exe -m pipelines.cli batch --profile finance
+```
+
+| profile | 差異 |
+|---|---|
+| `general`（預設）| 不預先決定「什麼主題才算合格」，主題閘門 off |
+| `finance` | 主題閘門 `enforce`：非財經/公共政策的文章擋下（需 `GEMINI_API_KEY`，會消耗額度）|
+
+站台 YAML 或 CLI 明給的值**永遠優先於 profile**，所以單站例外不必另開一份 profile。
+加新領域 = `profiles.py` 多一個 dict。
 
 當函式庫用：
 
@@ -213,7 +239,7 @@ DeepSeek；`preflight` 與 `fixture` 是離線檢查。
 
 ## 可觀測性（Arize Phoenix，選用）
 
-安裝並啟動 Phoenix：
+安裝並啟動 Phoenix（Windows 要先開 Docker Desktop）：
 
 ```bash
 uv sync --extra observability
@@ -222,6 +248,8 @@ uv sync --extra observability
 ```bash
 docker compose -f Phoenix/compose.yaml up -d
 ```
+
+容器起來後 UI 在 <http://localhost:6006>；`cli doctor` 會告訴你連不連得上。
 
 在 **repo 根的 `.env`** 設 `PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces`,
 之後 `pipelines.cli run` 就會把 trace 送進 <http://localhost:6006>。**沒設這個變數時完全不啟用**

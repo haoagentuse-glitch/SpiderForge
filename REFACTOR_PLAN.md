@@ -278,6 +278,45 @@ optional 後沒重新 lock，CI 會踩到）。
 先前標註的「Linux runner 未驗證」至此**解除**——跨平台無差異。
 遠端分支：`main`（基準快照 `e781f09`）、`refactor/modular-nodes`（本次重構，20 commit）。
 
+### 階段 11 — 財經 profile + 起飛前檢查（2026-08-01）
+
+**11.1 財經版不是另一條管線**。通用化之後，財經版與通用版的唯一實質差異是
+topic_gate（站清單本來就已預設指向 `examples/site_queue.taiwan-finance.yaml`）。
+所以做成 `pipelines/profiles.py` 的一組設定，而不是複製 `pipeline.py`——
+複製管線會直接毀掉「唯一組裝點」這個重構成果。
+
+- `GENERAL`（預設，空 dict）／`FINANCE`（`topic_gate.mode = enforce`）
+- CLI `--profile`，run 與 batch 都支援；**站台 YAML 與 CLI 明給的值優先於 profile**
+- 加新領域 = 這個檔多一個 dict + 註冊
+
+**11.2 `pipelines/doctor.py` + `cli doctor`**：試跑會連真網站又花額度，把環境問題
+一次找出來。金鑰檢查依**實際設定的 provider**（不寫死三個），不驗證有效性
+（那要花錢），也不連任何外部網站。
+
+修掉 doctor 自己的兩個 bug：
+- provider 兼多職時用途被 dict 覆蓋——預設 deepseek 同時負責產碼與第一輪修復，
+  報告裡「產碼」會憑空消失（已改成 provider → list，並加測試鎖住）
+- Playwright 檢查噴出 `sync_playwright` 收尾的 `TargetClosedError` 雜訊
+  （改在子程序問路徑）
+
+**11.3 試跑環境全部就緒（實跑驗證，非宣稱）**
+
+| 項目 | 動作 | 結果 |
+|---|---|---|
+| Playwright chromium | 下載 114.5 MiB | OK |
+| Ollama | 服務啟動（`qwen2.5:7b-instruct` 本來就已下載）| OK |
+| Docker Desktop | 啟動，daemon 5 秒就緒 | OK |
+| Phoenix | `docker compose up -d`，UI HTTP 200 | OK |
+| 三把金鑰 / Scrapy / 站清單 / runtime | 檢查 | OK |
+
+`cli doctor --profile finance` → **✓ 全部就緒**。
+
+**11.4 觀測鏈路端到端驗證（這次用真的 Phoenix）**：跑一個假節點 graph（不連網站、
+不呼叫模型），span 確實出現在 Phoenix 的 `spider_forge_preflight` 專案裡。
+先前只用假 OTLP collector 驗過，這次補上真實服務端的確認。
+
+**11.5 驗收**：153 passed。
+
 ## 5.5 核心價值驗收（實測，2026-08-01）
 
 計畫開頭那句「加一個節點只要新增一檔 + pipeline 拼裝一行」有沒有做到——**實跑演練過**：
