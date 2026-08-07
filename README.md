@@ -27,12 +27,12 @@ uv sync
 
 根目錄先分四塊,對應四種不同的東西:
 
-| 目錄 | 是什麼 | 會不會隨 `pip install` 帶走 |
+| 目錄 | 是什麼 |
 |---|---|---|
-| `src/spider_forge/` | **函式庫**——積木與契約 | ✅ 會 |
-| `pipelines/` | **管線**——把積木拼成流程 + CLI | ❌ 不會（這是本 repo 的應用程式碼）|
-| `tests/` | **測試** | ❌ 不會 |
-| `Phoenix/` | **觀測服務**（compose）| ❌ 不會 |
+| `src/spider_forge/` | **函式庫**——積木與契約 |
+| `pipelines/` | **管線**——把積木拼成流程 + CLI |
+| `tests/` | **測試** |
+| `Phoenix/` | **觀測服務**（compose）|
 
 這正是 pytorch 的分法:`torch` 是函式庫,你的 `train.py` 是自己的程式。
 `pip install spider_forge` 拿到的是積木,管線自己組——所以**依賴方向永遠是
