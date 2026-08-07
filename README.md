@@ -1,307 +1,261 @@
 # Spider Forge
 
-輸入網站 URL，自動偵查資料來源、生成 Scrapy 爬蟲、隔離執行、驗證品質，失敗時最多
-進行兩輪定向修復。通過所有檢查的爬蟲才會升版；失敗結果寫入待人工處理紀錄。
+給一個新聞網站的網址，產出一支能跑的 Scrapy 爬蟲。
 
-流程會先以不呼叫模型的方式檢查可重播端點、文章資料與公開存取狀態。明確不可行時
-直接停止；可行時由確定性材料編譯器只保留已選來源、精簡 DOM 與必要契約，再交給
-產碼模型，避免模型猜測端點、參數或被無關材料塞滿上下文。
+不是「讓大型語言模型寫爬蟲」——那個誰都做得到，問題是產出的碼有一半跑不起來，
+而你要看過才知道。這裡的重點是**產出之後的驗證鏈**：先用探測到的真實證據限縮模型
+能猜的範圍，產碼後用五道由便宜到貴的閘門逐一擋，失敗時帶著具體錯誤重寫，
+兩輪修不好就寫進待處理紀錄並記下卡在哪一關。
 
-## 快速開始
+模型只出現在四個地方：挑文章連結、產碼、修碼、主題判定。其餘全是程式。
+
+---
+
+## 為什麼需要驗證鏈
+
+自動產爬蟲的失敗模式很少是「語法錯」，而是這些：
+
+| 失敗 | 為什麼模型看不出來 |
+|---|---|
+| 把導覽列當成文章連結 | 它只拿到兩個網址，不知道那是「關於我們」 |
+| 抽取規則只對第一種版型有效 | 樣本裡只有一種版型 |
+| 抓到的是挑戰頁不是內文 | 挑戰頁也回 200，也有標題 |
+| 翻頁參數被站方忽略 | `?page=999` 回第一頁，看起來一切正常 |
+| 日期沒有時區 | 模型不知道下游要拿它排序 |
+
+這些都不是靠更好的提示詞能解決的——**要有東西去對照**。所以流程的設計原則是：
+凡是有確定答案的判斷，一律用程式做；模型只負責真正需要生成或語意的部分。
+
+---
+
+## 架構
+
+```mermaid
+flowchart TD
+    IN([輸入網址 ＋ 站台設定]) --> prep
+
+    prep["整理請求<br/><small>補預設、正規化、設定重試額度</small>"]:::prog
+    probe["探測（只跑一次）<br/><small>連線與瀏覽器雙軌<br/>取頁面、連結、前端呼叫紀錄</small>"]:::prog
+    entry{"進得去嗎"}:::prog
+
+    prep --> probe --> entry
+    entry -->|"被拒且零證據"| dead([寫入待處理紀錄<br/><small>記下卡在哪一關</small>]):::stop
+    entry -->|可以| pick
+
+    subgraph LOOP["前期偵查子迴圈"]
+        direction TB
+        pick["選一種抓法<br/><small>由便宜到貴：<br/>一、直接連線 ＋ 頁面連結<br/>二、瀏覽器渲染 ＋ 頁面連結<br/>三、瀏覽器捲動 ＋ 頁面連結<br/>四、前端資料介面</small>"]:::prog
+        c1{"檢查一：找得到文章連結<br/><small>程式排除導覽 ＋ 模型挑文章</small>"}:::mixed
+        c2{"檢查二：樣本是真文章<br/><small>程式：有標題、有內文、兩篇不能雷同</small>"}:::prog
+        c3{"檢查三：翻頁有效<br/><small>程式：實抓第二頁要有新文章</small>"}:::prog
+        pick --> c1 --> c2 --> c3
+    end
+
+    c1 -->|否| more
+    c2 -->|否| more
+    c3 -->|否| more
+    more{"還有沒試過的抓法"}:::prog
+    more -->|有| pick
+    more -->|"四種都試完"| dead
+
+    c3 -->|"三關全過"| pack["編材料<br/><small>只留已選來源、清雜訊、裁切</small>"]:::prog
+    pack --> gen["產碼<br/><small>一次輸出完整爬蟲</small>"]:::paid
+
+    subgraph GATE["產出閘門（由便宜到貴）"]
+        direction TB
+        g1{"語法樹檢查<br/><small>程式：欄位、屬性、禁用設定</small>"}:::prog
+        g2{"離線重播<br/><small>程式：拿保存的頁面跑一次抽取</small>"}:::prog
+        g3["隔離實跑<br/><small>程式：獨立子程序連真站</small>"]:::prog
+        g4{"是不是錯誤頁<br/><small>程式字樣比對，可疑時才問模型</small>"}:::mixed
+        g5{"品質驗證<br/><small>程式：欄位、數量、去重、時效</small>"}:::prog
+        g6{"主題相關<br/><small>模型：逐批分類（預設關閉）</small>"}:::cloud
+        g1 -->|過| g2 -->|過| g3 --> g4 -->|是內容| g5 --> g6
+    end
+
+    gen --> g1
+    g1 -->|不過| diag
+    g2 -->|不過| diag
+    g4 -->|是錯誤頁| diag
+    g5 -->|不過| diag
+    g6 -->|不過| diag
+    g6 -->|過| ship([升版存檔<br/><small>可回滾</small>]):::ok
+
+    diag{"診斷<br/><small>程式先比對已知失敗樣態<br/>未知錯誤才問模型</small>"}:::mixed
+    diag -->|"額度用盡或不可修"| dead
+    diag -->|第一輪| fix1["修碼"]:::paid
+    diag -->|第二輪| fix2["換一家模型再修"]:::paid
+    fix1 --> g1
+    fix2 --> g1
+
+    classDef prog fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
+    classDef mixed fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef cloud fill:#fef9c3,stroke:#ca8a04,color:#713f12
+    classDef paid fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef stop fill:#f3f4f6,stroke:#6b7280,color:#374151
+    classDef ok fill:#dcfce7,stroke:#16a34a,color:#14532d
+```
+
+<sub>藍＝程式判斷　綠＝程式加模型　黃＝雲端模型　紅＝產碼模型（唯一的金錢成本）</sub>
+
+### 每一關用什麼方法
+
+| 關卡 | 方法 | 為什麼 |
+|---|---|---|
+| 探測 | 程式 | 連線與瀏覽器各抓一次，記下前端呼叫 |
+| 進不進得去 | 程式 | 狀態碼與證據數量是事實，不是判斷 |
+| 選抓法 | 程式 | 由便宜到貴的固定順序，不問模型 |
+| 找文章連結 | 程式 ＋ 模型 | 排除導覽是結構事實；分辨標題與分類名要語意 |
+| 樣本驗證 | 程式 | 兩篇內容雷同就是拿到列表頁，比對即可 |
+| 翻頁驗證 | 程式 | 第二頁有沒有新文章是事實 |
+| 產碼／修碼 | 模型 | 唯一真正需要生成能力的地方 |
+| 語法樹檢查 | 程式 | 契約違反是靜態可判的 |
+| 離線重播 | 程式 | 用保存的頁面跑抽取，不連網、可重複 |
+| 品質驗證 | 程式 | 數量、去重、時效都算得出來 |
+| 診斷 | 程式為主 | 已知失敗樣態直接歸類，未知才問模型 |
+
+完整版與各節點的設計理由見 [`pipelines/GRAPH.md`](pipelines/GRAPH.md)。
+
+---
+
+## 幾個設計決定
+
+### 閘門的順序是照成本排的
+
+語法樹檢查不花錢也不連網，所以放第一個；離線重播用探測時保存的頁面，同樣不連網；
+真正連站的隔離實跑放到第三個。一支寫壞的爬蟲在第一關就被擋下，不會浪費一次真實抓取。
+
+### 失敗要分類，不能只說「失敗」
+
+診斷會先比對已知的失敗樣態（契約違反、抽取不到、被擋、時效不符），對得上就直接歸類，
+對不上才問模型。分類決定路由：可修的進修復迴圈，不可修的直接寫待處理紀錄。
+
+被 401 擋在門外和「這個入口真的沒有文章」是完全不同的兩件事，前者要換入口或取得授權，
+後者多半是網址給錯——分類含糊會讓人查錯方向。
+
+### 修復迴圈修的是程式碼，不是證據
+
+這是實際踩過的坑。某次抓 BBC，明細樣本抓成了導覽頁，模型照著錯的樣本學抽取規則，
+兩輪修復都失敗——因為修復用的是同一份錯誤證據。診斷還把它歸成「抽取規則錯」，
+方向完全反了。
+
+所以前期偵查才要改成子迴圈：證據不對就換一種抓法重來，而不是硬著頭皮往下送。
+
+### 界線只有兩條
+
+登入資料勿碰、絕對不搞癱瘓（低速、並發固定為一、翻頁有上限）。
+
+其餘都是預設值不是禁令。專案早期有一批「被擋一次就放棄」的規則——挑戰頁字樣直接
+判死、瀏覽器看得到但直接連線看不到就放棄、無條件禁用瀏覽器互動介面——後來全部移除，
+因為它們既不屬於那兩條，又實質壓低了成功率。最後一條還連帶擋死了捲動載入，
+而那是現代網站最主流的翻頁形式。
+
+---
+
+## 目錄
+
+```text
+spider_forge/
+├── src/spider_forge/        函式庫（會被安裝）
+│   ├── nodes/               節點積木，一個節點一個檔
+│   ├── schemas/             要抓什麼欄位——唯一來源
+│   ├── prompts/             各節點的提示詞
+│   ├── clients/             瀏覽器與模型服務
+│   ├── shared/              節點共用的解析與品質規則
+│   ├── sandbox_runtime/     沙盒子程序內的離線重播引擎
+│   ├── observability/       追蹤（沒設定就完全不啟用）
+│   └── config.py  state.py
+├── pipelines/               管線與命令列（不隨套件安裝）
+│   ├── pipeline.py          唯一組裝點：節點順序與所有分支
+│   ├── GRAPH.md             架構圖，跟著這裡的程式走
+│   └── batch.py  cli.py  doctor.py  profiles.py
+├── tests/                   170 個測試，全離線
+├── Phoenix/                 觀測服務
+└── examples/                站台設定範例
+```
+
+依賴方向單向：`pipelines` 用 `spider_forge`，反過來不允許（有測試擋著）。
+函式庫不含管線，就像 PyTorch 不含你的訓練腳本。
+
+**改要抓什麼欄位只改一個地方**：`schemas/outputs.py` 的 `Article`。欄位名、必填、
+給模型看的規則都寫在同一個定義裡，驗證與產碼提示詞都從它生成——加一個欄位不會
+只有驗證那半邊生效。
+
+---
+
+## 跑起來
 
 ```bash
 uv sync
 ```
 
 ```bash
-.venv/Scripts/python.exe -m pytest tests/ -q
+.venv/Scripts/python.exe -m pipelines.cli doctor
 ```
 
-```bash
-.venv/Scripts/python.exe -m pipelines.cli run --url "https://example.com/news"
-```
-
-測試全部離線：不碰真實網站、不呼叫外部模型、不消耗 API 額度。`run` 會兩者都做。
-
-## 模組邊界
-
-根目錄先分四塊,對應四種不同的東西:
-
-| 目錄 | 是什麼 |
-|---|---|---|
-| `src/spider_forge/` | **函式庫**——積木與契約 |
-| `pipelines/` | **管線**——把積木拼成流程 + CLI |
-| `tests/` | **測試** |
-| `Phoenix/` | **觀測服務**（compose）|
-
-
-
-函式庫內部:
-
-- `nodes/` 是節點積木庫：一個節點一個 class（`__init__` 存設定 / `__call__` 執行）。
-  加新節點 = 這裡多一個檔 + `pipelines/pipeline.py` 拼裝一行；節點不得互相 import（有測試鎖住）。
-- `schemas/` 是資料形狀的唯一來源：`outputs.py` 定義要抓什麼欄位（pydantic `Article`），
-  `llm_io.py` 是模型輸出的 schema。改抓取欄位只改這裡。
-- `prompts/` 每個呼叫 LLM 的節點一個 prompt 檔，由節點注入。
-- `clients/` 封裝瀏覽器與模型服務；`registry.py` 是 provider（模型/金鑰/base_url）的唯一設定點。
-- `shared/` 放多個節點共同使用的解析、品質規則及領域服務。
-- `sandbox_runtime/fixture_runner.py` 是離線重播引擎，只在**沙盒子程序**內以檔案路徑執行，
-  只吃 JSON fixture 契約、不 import 控制層；控制層也不 import 它。
-  想換成別的重播引擎：`SPIDERFORGE_FIXTURE_RUNNER=<module>`（+ `..._CWD`），遵守同一份契約即可。
-- `observability/` 追蹤的啟用與 LLM span（沒設 Phoenix endpoint 就是完全的 no-op）。
-- `output/` 管理候選、正式版本、歷史版本及人工回滾。
-- `runs/ledger.py` 管理追加式執行紀錄。
-- `config.py` 是設定與執行期路徑的唯一來源。
-
-管線層 `pipelines/`:`pipeline.py` 是唯一流程組裝入口（節點順序與所有分支都在這裡）、
-`batch.py` 是批次執行器、`cli.py` 是命令列入口。
-
-`state.py` 把流程狀態分成三層：`ForgeInput`（呼叫端該給的）、`ForgeInternal`（節點間中間態）、
-`ForgeOutput`（一次執行要交出的產出）。graph 入口只收 `ForgeInput`，`forge_result()` 只回產出。
-
-候選爬蟲是自包含單一檔案，會在檔內定義 `ArticleItem`。本機沙盒直接以
-`scrapy runspider` 執行；設 `SPIDERFORGE_CRAWLER_RUNTIME=docker` 則把程式經標準輸入送進
-獨立、唯讀且無機密資料的 crawler 容器。
-
-robots 不參與 Spider Forge 的可行性判斷、產碼契約或拒絕路由。付費牆、CAPTCHA 與
-登入牆仍是不繞過的硬界線（見 `shared/request_identity.py`）。
-
-## 流程
-
-```mermaid
-flowchart TD
-    A["輸入 URL"] --> B["整理請求"]
-    B --> C["HTTP + Playwright 偵查"]
-    C --> D["確定性可行性判斷"]
-    D -->|不可行| X["寫入待處理紀錄"]
-    D -->|可行| E["選擇 API／HTML／Hybrid"]
-    E --> F["建立 EvidencePack"]
-    F --> G0["只留已選來源與精簡 DOM"]
-    G0 --> G["一次生成完整候選"]
-    G --> P["靜態契約檢查"]
-    P --> Q["保存 response 離線重播"]
-    Q --> H["活站隔離執行"]
-    H --> I["攔截錯誤頁"]
-    I --> J["確定性品質驗證"]
-    J --> K["主題驗證（預設 off）"]
-    K -->|通過| L["升版"]
-    K -->|未通過| M["診斷"]
-    M -->|仍可修復| N["定向修復"]
-    N --> P
-    M -->|額度用盡或不可修| X
-```
-
-不可修復的失敗類別不會跑滿兩輪修復。一般產碼與第一輪修復預設使用 DeepSeek，第二輪
-才升級至 Kimi。
-
-產碼維持單次完整輸出，不採兩次生成後組裝。材料過量先由可重現的程式規則處理：
-移除 script/style/svg 等雜訊、裁切 DOM、限制樣本數、排除未選 feed。
-
-## 目錄
-
-```text
-spider_forge/                    repo 根
-├── pyproject.toml               套件定義（只收 src/）+ uv.lock
-├── src/spider_forge/            ① 函式庫（積木）
-│   ├── nodes/                   ★ 節點積木庫（17 個節點，一節點一檔）
-│   ├── schemas/                 資料形狀（outputs.py / llm_io.py）
-│   ├── prompts/                 各節點的 prompt
-│   ├── clients/                 browser / coder / judge / page / topic + registry + env
-│   ├── shared/                  節點共用 helper 與領域服務
-│   ├── sandbox_runtime/         沙盒子程序內執行的離線重播引擎
-│   ├── observability/           Phoenix 追蹤（客戶端；沒設定就 no-op）
-│   ├── output/  runs/  tools/
-│   └── config.py  state.py
-├── pipelines/                   ② 管線（不隨套件安裝）
-│   ├── pipeline.py              唯一組裝點：節點順序與所有分支
-│   ├── batch.py                 批次執行器
-│   └── cli.py  __main__.py      命令列入口
-├── tests/                       ③ 測試（含 manual/ 人工逐關工具）
-├── Phoenix/                     ④ 觀測服務（docker compose）
-├── examples/                    站台清單範例
-└── runtime/                     執行期產物（gitignored）
-```
-
-執行期資料不放在原始碼目錄，預設在 repo 根的 `runtime/`，可用 `SPIDERFORGE_DATA_DIR` 改：
-
-```text
-runtime/
-├── requests/
-├── runs/<run_id>/
-├── artifacts/{candidates,active,versions}/
-├── records/{runs.jsonl,promotions.jsonl,dead_letter/}
-└── models/
-```
-
-## 設定
-
-金鑰放 `.env`（見 `.env.example`）或作業系統環境變數：
-
-| 變數 | 用途 |
-|---|---|
-| `DEEPSEEK_API_KEY` | 初次產碼與一般修復 |
-| `KIMI_API_KEY` | 只有進入最後一輪 Kimi 修復時才需要 |
-| `GEMINI_API_KEY` | Gemini（主題閘門、內容真偽確認）|
-| `OLLAMA_HOST` | 選用；預設 `http://localhost:11434` |
-
-常用行為開關（全部可省略）：
-
-| 變數 | 預設 | 說明 |
-|---|---|---|
-| `SPIDERFORGE_SITE_QUEUE` | `examples/site_queue.taiwan-finance.yaml` | 批次要跑的站台清單 |
-| `SPIDERFORGE_DATA_DIR` | `<repo>/runtime` | 執行期產物根目錄 |
-| `SPIDERFORGE_TOPIC_MODE` | `off` | 主題閘門：off / shadow / enforce |
-| `SPIDERFORGE_GENERATION_PROVIDER` | `deepseek` | 產碼供應商 |
-| `SPIDERFORGE_REPAIR_PROVIDER` | `deepseek` | 第一輪修復供應商 |
-| `SPIDERFORGE_FINAL_REPAIR_PROVIDER` | `kimi` | 最後一輪修復供應商 |
-| `SPIDERFORGE_CRAWLER_RUNTIME` | `local` | 沙盒執行方式：local / docker |
-| `SPIDERFORGE_FIXTURE_RUNNER` | 內建 | 換掉離線重播引擎 |
-| `SPIDERFORGE_USER_AGENT` / `_ACCEPT_LANGUAGE` / `_REQUEST_PURPOSE` | 見 `request_identity.py` | 請求身分（單一固定，不輪替）|
-
-## 執行
-
-試跑前先檢查環境（不呼叫外部 API、不驗證金鑰有效性，只看該有的東西在不在）：
-
-```bash
-.venv/Scripts/python.exe -m pipelines.cli doctor --profile finance
-```
-
-它會檢查：金鑰（依實際設定的 provider）、Playwright chromium 是否下載、Scrapy、
-Ollama 與 judge 模型、Phoenix、站台清單、runtime 可寫。`FAIL` 代表會直接擋住試跑,
-`WARN` 代表能跑但有疑慮。
+`doctor` 檢查金鑰、瀏覽器、Scrapy、本地模型、觀測服務、站台清單、產物目錄可寫。
+不呼叫外部 API，也不驗證金鑰有效性——只看該有的東西在不在。
 
 ```bash
 .venv/Scripts/python.exe -m pipelines.cli run --url "https://example.com/news" --max-retries 0
 ```
 
-```bash
-.venv/Scripts/python.exe -m pipelines.cli batch
-```
+第一次跑建議 `--max-retries 0`，先看一次生成的原始品質，不讓修復迴圈把問題蓋掉。
+
+需要網址規則的站（大多數）用站台設定檔：
 
 ```bash
-.venv/Scripts/python.exe -m pipelines.cli status
+.venv/Scripts/python.exe -m pipelines.cli batch --site examples/site_queue.bbc.yaml
 ```
 
-`run` 可重複 `--url`，或用 `--file` 給每行一個 URL 的檔案；`batch` 後面接
-`source_prefix` 只跑指定來源；`paths` 只印資料位置。
+站台設定裡的 `article_url_patterns` 決定「哪個版面算數」。這件事模型做不到——
+它分得出文章與導覽，但分不出商業版與體育版，那是使用者意圖不是網頁裡的事實。
 
-### 領域設定檔（profile）
+---
 
-**管線只有一條**，換領域不複製管線、只換一組設定（見 `pipelines/profiles.py`）：
+## 測試
 
 ```bash
-.venv/Scripts/python.exe -m pipelines.cli batch --profile finance
+.venv/Scripts/python.exe -m pytest tests/ -q
 ```
 
-| profile | 差異 |
-|---|---|
-| `general`（預設）| 不預先決定「什麼主題才算合格」，主題閘門 off |
-| `finance` | 主題閘門 `enforce`：非財經/公共政策的文章擋下（需 `GEMINI_API_KEY`，會消耗額度）|
+170 個測試，全部離線：不連網站、不呼叫模型、不消耗額度。測試會把產物寫到暫存目錄，
+不碰真實的執行紀錄。
 
-站台 YAML 或 CLI 明給的值**永遠優先於 profile**，所以單站例外不必另開一份 profile。
-加新領域 = `profiles.py` 多一個 dict。
+幾個值得一提的：
 
-當函式庫用：
+- **架構不變式**——函式庫不得引用管線層、節點不得互相引用、命令列不得跳過組裝點直接
+  用節點。這些違反在本機都能跑，只有別人安裝時才爆，所以用測試釘死。
+- **提示詞與資料定義的一致性**——欄位定義改了而提示詞沒改，模型會照舊欄位產碼且
+  毫無錯誤提示。測試比對兩邊，不一致就紅。
+- **反向案例**——例如「翻頁的第二頁回了第一頁的內容」，前兩個檢查都會通過，
+  只有比對內容擋得住。這種情境有獨立測試。
 
-```python
-from pipelines.pipeline import forge_spider
+---
 
-result = forge_spider("https://example.com/news", max_retries=0)
-print(result["status"], result.get("spider_path"))
-```
-
-想自己組流程（換節點順序、加一關），就照 `pipelines/pipeline.py` 的寫法用積木拼：
-
-```python
-from langgraph.graph import START, StateGraph
-from spider_forge.nodes import Recon, PrepareRequest
-from spider_forge.state import SpiderForgeState, ForgeInput
-
-builder = StateGraph(SpiderForgeState, input_schema=ForgeInput)
-builder.add_node("prepare_request", PrepareRequest())
-builder.add_node("recon", Recon())
-builder.add_edge(START, "prepare_request")
-```
-
-### 逐關人工審查
-
-`tests/manual/run_one_stage.py` 一次只跑一關，輸入是前一關的完整狀態 JSON，
-刻意沒有「一次跑完」模式：
-
-```bash
-.venv/Scripts/python.exe tests/manual/run_one_stage.py prepare --input tests/manual/rba_request.json --output runtime/manual/01_prepare.json
-```
-
-`recon`、`evidence` 會接觸真實網站，`strategy` 可能使用 Ollama，`generate` 會使用
-DeepSeek；`preflight` 與 `fixture` 是離線檢查。
-
-## 可觀測性（Arize Phoenix，選用）
-
-安裝並啟動 Phoenix（Windows 要先開 Docker Desktop）：
-
-```bash
-uv sync --extra observability
-```
+## 觀測
 
 ```bash
 docker compose -f Phoenix/compose.yaml up -d
 ```
 
-容器起來後 UI 在 <http://localhost:6006>；`cli doctor` 會告訴你連不連得上。
+在 `.env` 設 `PHOENIX_COLLECTOR_ENDPOINT` 之後，每個節點一個 span（耗時、進出狀態、
+例外堆疊），每次模型呼叫一個子 span（供應商、模型、提示詞、回覆、token 數、重試次數）。
+沒設這個變數時完全不啟用，連套件都不會載入。
 
-在 **repo 根的 `.env`** 設 `PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces`,
-之後 `pipelines.cli run` 就會把 trace 送進 <http://localhost:6006>。**沒設這個變數時完全不啟用**
-（不 import Phoenix、零開銷），所以不裝觀測套件也照樣跑。
+節點層的 span 由 OpenTelemetry 的 LangChain 儀器自動產生，節點程式碼一行都不用改——
+所以「加新節點」仍然只要新增一個檔案。模型呼叫是自己用 HTTP 打的，儀器抓不到，
+那部分手動包。
 
-兩份 `.env` 按**讀者**分工，不要互搬：
+這在除錯時救過場：某次產碼失敗，候選程式碼因為沒過第一關而從未落檔，只剩三個錯誤
+代碼，是從追蹤裡撈出完整程式碼才看出模型漏了什麼。之後改成產碼當下就落檔。
 
-| 檔案 | 讀者 | 放什麼 |
-|---|---|---|
-| repo 根 `.env` | `spider_forge` 程式 | `PHOENIX_COLLECTOR_ENDPOINT` / `PHOENIX_PROJECT` / `PHOENIX_API_KEY` / trace 開關 |
-| `Phoenix/.env` | `docker compose` | 服務端：埠、保留天數、映像版本（全部選填，見 `Phoenix/.env.example`）|
+---
 
-⚠️ 客戶端變數放進 `Phoenix/.env` 會**靜默失效**：套件的 `.env` loader 只往上層目錄搜尋，
-`Phoenix/` 是子目錄，程式讀不到。
+## 目前狀態
 
-Phoenix container 的環境只有 `compose.yaml` 裡明列的變數（沒有 `env_file`、沒掛載 repo），
-所以它拿不到任何 LLM 金鑰；候選爬蟲的沙盒子程序同樣走白名單，也拿不到。
+已實作：探測、可行性分流、找文章連結（三層過濾）、翻頁偵測與驗證、產碼、五道閘門、
+診斷與修復迴圈、待處理紀錄、批次執行、觀測。
 
-看得到的東西：
+未實作：前期偵查的子迴圈（抓法升級與樣本驗證）、捲動載入的偵測。圖上標了。
 
-- 每個節點一個 span（耗時、進出 state、失敗的例外堆疊）—— 由
-  `openinference-instrumentation-langchain` 自動產生，**節點程式碼不需要任何改動**，
-  所以「加新節點」仍然只要新增一檔。
-- 每次 LLM 呼叫一個子 span（provider、model、prompt、回覆、token、重試次數）——
-  這些呼叫是 clients 層自己用 requests 打的，instrumentor 抓不到，所以手動包在
-  `observability.llm_span` 裡。
-
-| 變數 | 預設 | 說明 |
-|---|---|---|
-| `PHOENIX_COLLECTOR_ENDPOINT` | 無 | 沒設就不啟用追蹤 |
-| `PHOENIX_PROJECT` | `spider_forge` | Phoenix 專案名 |
-| `SPIDERFORGE_TRACE_CONTENT` | `1` | 設 `0` 只記 token/耗時，不送 prompt 與 state 內容 |
-| `SPIDERFORGE_TRACE_MAX_CHARS` | `4000` | 單一欄位長度上限（state 帶 DOM，不設限會爆量）|
-
-## 證據與執行指標
-
-`EvidencePack.replay_exchange` 保存已遮密的請求（method/URL/headers/body）與
-回應（狀態碼/headers/body 樣本/是否截斷）。批次執行把每次 EvidencePack 寫入
-`runs/<run_id>/evidence.json`，並在 `records/runs.jsonl` 記錄 `first_pass_success`、
-`repair_count`、`coder_tokens`。
-
-```bash
-.venv/Scripts/python.exe -m spider_forge.runs.ledger
-```
-
-`first_pass_rate` 的分母是各來源最後一次執行的總站數，不只計算最後成功的站，避免把
-失敗站排除後高估首次成功率。離線驗收只能證明指標與流程正確；真實站點的改善幅度仍須
-用同一批站點在改造前後各跑一次才能成立。
-
-## 外部服務
-
-- Playwright：網站與網路請求偵查。
-- Ollama：本機策略判斷與診斷，透過 HTTP。
-- DeepSeek／Kimi：程式生成與修復。
-- Gemini：主題判定與內容真偽確認（主題閘門預設 off）。
-
-重構進度與設計決策見 [`REFACTOR_PLAN.md`](REFACTOR_PLAN.md)。
+進度與每個決定的理由在 [`pipelines/GRAPH.md`](pipelines/GRAPH.md)。
