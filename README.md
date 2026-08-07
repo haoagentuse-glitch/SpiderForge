@@ -34,9 +34,7 @@ uv sync
 | `tests/` | **測試** |
 | `Phoenix/` | **觀測服務**（compose）|
 
-這正是 pytorch 的分法:`torch` 是函式庫,你的 `train.py` 是自己的程式。
-`pip install spider_forge` 拿到的是積木,管線自己組——所以**依賴方向永遠是
-`pipelines → spider_forge`,反過來絕不允許**（有測試鎖住,一旦違反套件就裝不起來）。
+
 
 函式庫內部:
 
