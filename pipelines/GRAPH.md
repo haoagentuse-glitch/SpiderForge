@@ -196,6 +196,52 @@ flowchart TD
 
 ---
 
+## 圖三：前期偵查子迴圈（提案）
+
+抓法由便宜到貴逐一嘗試，三個檢查全過才往下送。
+
+```mermaid
+flowchart TD
+    IN([輸入網址]) --> probe
+
+    probe["探測（只跑一次）<br/><small>取頁面、連結、前端呼叫紀錄<br/>後面每輪共用，不重抓</small>"]:::prog
+    entry{"進得去嗎"}:::prog
+    dead1([停：需要登入，不試]):::stop
+
+    probe --> entry
+    entry -->|"被拒且零證據"| dead1
+    entry -->|可以| pick
+
+    subgraph LOOP["前期偵查子迴圈"]
+        direction TB
+        pick["選一種抓法<br/><small>一、直接連線 ＋ 頁面連結<br/>二、瀏覽器渲染 ＋ 頁面連結<br/>三、瀏覽器捲動 ＋ 頁面連結<br/>四、前端資料介面</small>"]:::prog
+        c1{"檢查一：找得到文章連結<br/><small>程式過濾網址規則 ＋ 模型排序</small>"}:::mixed
+        c2{"檢查二：樣本是真文章<br/><small>純程式：有標題、有內文、<br/>兩篇不能幾乎一樣</small>"}:::prog
+        c3{"檢查三：翻頁有效<br/><small>純程式：實抓第二頁要有新文章<br/>捲動則看連結數有沒有增加<br/>確定沒有翻頁也算通過</small>"}:::prog
+        pick --> c1 --> c2 --> c3
+    end
+
+    c1 -->|否| more
+    c2 -->|否| more
+    c3 -->|否| more
+    more{"還有沒試過的抓法"}:::prog
+    more -->|有| pick
+    more -->|"四種都試完"| dead2([停：寫入待處理<br/>並記下卡在哪個檢查]):::stop
+    c3 -->|是| OUT([送給產碼<br/>抓法 ＋ 文章樣本 ＋ 翻頁方式]):::ok
+
+    classDef prog fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
+    classDef mixed fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef stop fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef ok fill:#dcfce7,stroke:#16a34a,color:#14532d
+```
+
+跟現況的差別：現在是一條直線，中間任何一步結果不理想都照樣往下送，問題留到
+產碼之後才爆，而那時的診斷會怪錯對象。改成迴圈後，不理想就換一種抓法重來。
+
+**探測不進迴圈**：它只跑一次把原始素材拿齊，後面每輪共用同一份，不重抓。
+
+---
+
 ## 實作進度
 
 - [x] **①②③ `discover_links` 節點**（commit 見變更記錄）——插在 `strategy_decision`
