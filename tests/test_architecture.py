@@ -92,6 +92,7 @@ def t_execution_entries_only_depend_on_pipeline():
         PIPELINES_DIR / "__main__.py",
         PIPELINES_DIR / "cli.py",
         PIPELINES_DIR / "batch.py",
+        PIPELINES_DIR / "ui.py",
         PACKAGE_DIR / "tools" / "topic_training.py",
     ):
         for node in ast.walk(_tree(path)):

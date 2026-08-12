@@ -21,6 +21,9 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8.4,<9"]
+# 展示介面是旁掛層：不裝也不影響 CLI 與批次（只有展示模組自己會 import）。
+# 安裝：uv sync --extra ui
+ui = ["gradio>=6"]
 # 可觀測性是旁掛層：不裝也能跑（setup_tracing 直接 no-op）。
 # 安裝：uv sync --extra observability
 observability = [
