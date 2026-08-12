@@ -53,12 +53,13 @@ def _scroll_links(report: dict[str, Any]) -> list[dict]:
     return list(report.get("scroll_link_samples") or [])
 
 
-def _api_rows(state: dict[str, Any], report: dict[str, Any]) -> list[dict]:
-    """前端資料介面／feed 記錄裡的文章連結。
+def selected_structured(state: dict[str, Any]) -> list[dict]:
+    """這一次要用的結構化來源（前端資料介面／feed）。
 
-    ``strategy_decision`` 選定了 ``chosen_api`` 就只用那一個來源，
-    沒選定才把所有結構化候選攤平——跟 ``_discover_detail_urls`` 同一套規則。
+    ``strategy_decision`` 選定了 ``chosen_api`` 就只用那一個，沒選定才把所有候選
+    攤平——跟 ``_discover_detail_urls`` 同一套規則，三個呼叫端共用這一份定義。
     """
+    report = state.get("recon_report") or {}
     chosen_api = str((state.get("strategy_detail") or {}).get("chosen_api") or "")
     candidates = [
         *(report.get("api_candidates") or []),
@@ -68,6 +69,12 @@ def _api_rows(state: dict[str, Any], report: dict[str, Any]) -> list[dict]:
         candidates = [
             row for row in candidates if str(row.get("url") or "") == chosen_api
         ]
+    return candidates
+
+
+def _api_rows(state: dict[str, Any], report: dict[str, Any]) -> list[dict]:
+    """前端資料介面／feed 記錄裡的文章連結。"""
+    candidates = selected_structured(state)
     return [
         {"url": item.get("url"), "text": item.get("title") or ""}
         for candidate in candidates
@@ -85,19 +92,9 @@ def api_record_count(state: dict[str, Any]) -> int:
     """
     from .evidence import _is_replayable_article_api
 
-    report = state.get("recon_report") or {}
-    chosen_api = str((state.get("strategy_detail") or {}).get("chosen_api") or "")
-    candidates = [
-        *(report.get("api_candidates") or []),
-        *(report.get("feed_candidates") or []),
-    ]
-    if chosen_api:
-        candidates = [
-            row for row in candidates if str(row.get("url") or "") == chosen_api
-        ]
     return sum(
         int(row.get("article_record_count") or 0)
-        for row in candidates
+        for row in selected_structured(state)
         if _is_replayable_article_api(row) or row.get("feed_items")
     )
 

@@ -27,6 +27,10 @@ SPIDER_CONTRACT = """【硬性契約】
    content_scope="{content_scope}"。
    **每一個 Request 都要明確寫 callback，而且被指名的 method 一定要存在**；
    用 start_urls（不自寫 start_requests）時必須定義 `def parse(self, response)`。
+   **EvidencePack.replay_headers 要放進 custom_settings 的 USER_AGENT 與
+   DEFAULT_REQUEST_HEADERS**，不要只掛在自己 yield 的 Request 上：start_urls
+   產生的入口請求不會帶你設的 headers，會走 Scrapy 預設 UA。實測有站台對
+   預設 UA 直接回 403、對瀏覽器 UA 回 200——入口一被擋，整站就是 0 筆。
    實測最常見的產碼失敗就是這個：自訂了 parse_listing 卻沒有 parse，
    Scrapy 對 start_urls 產生的 request 找不到預設 callback，
    直接 NotImplementedError，整支爬蟲一筆都抓不到。
@@ -40,6 +44,13 @@ SPIDER_CONTRACT = """【硬性契約】
    用 Scrapy HTTP/HTML，不得硬切 Playwright。
 7. 嚴格遵守 EvidencePack.request.validation 的 URL pattern、排除規則、時效與數量。
    Scrapy SelectorList 沒有 .first()；用 .get()、getall() 或索引。
+   **`scrapy.loader.processors` 這個模組早就不存在**（本專案是 Scrapy 2.17）；
+   真的要用 ItemLoader 處理器是 `itemloaders.processors`。但直接用 selector
+   取值就夠了，不必引入 ItemLoader——實測這個 import 是最常見的整支載入失敗原因。
+   **`.re_first(pattern)` 在 pattern 有多個 group 時只回「第一個 group」的字串**，
+   不是所有 group。要一次取多個 group 用 `.re(pattern)`（回傳 list）。
+   實測最常見的死法：`y, m, d, H, M = map(int, sel.re_first(r"(\\d{{4}}) 年 …"))`
+   —— re_first 回的是 "2026"，map 會逐字元拆開，當場 ValueError，整站抓 0 筆。
    **requirements 含 browser_transport 時才用 scrapy_playwright，否則不要 import**——
    判準是這一項，不是 access_assessment：入口用純 HTTP 拿得到 200，不代表內文不是
    前端渲染的（EvidencePack.fetch_strategy 是前期偵查實際驗證過的抓法）。

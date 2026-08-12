@@ -312,6 +312,49 @@ def t_generated_code_is_persisted_before_the_gates_run():
     return ok and same, f"candidate_path={update.get('candidate_path')} 內容一致={same}"
 
 
+def t_preflight_catches_entry_request_without_replay_headers():
+    """start_urls 產生的入口請求不會帶候選自己設的 headers。
+
+    科技新報實測：候選設了瀏覽器 headers 也傳給明細請求，但沒自寫 start_requests，
+    入口就走 Scrapy 預設 UA——同一頁預設 UA 回 403、瀏覽器 UA 回 200，整站抓 0 筆，
+    而且要到沙盒實跑才發現，還被歸成 selector 寫錯。這是靜態就看得出來的。
+    """
+    from spider_forge.shared.generation import preflight_generated_code
+
+    state = {
+        "source_prefix": "demo", "site_name": "示範",
+        "target_schema": {"fields": {}, "source_type": "media", "content_scope": "summary_only"},
+        "evidence_pack": {"requirements": []},
+    }
+    body = (
+        "import scrapy\n"
+        "class DemoSpider(scrapy.Spider):\n"
+        "    name = 'demo'\n"
+        "    source_prefix = 'demo'\n"
+        "    source = '示範'\n"
+        "    source_type = 'media'\n"
+        "    content_scope = 'summary_only'\n"
+        "    start_urls = ['https://example.com/news']\n"
+        "{settings}"
+        "    headers = {{'User-Agent': 'Mozilla/5.0'}}\n"
+        "    def parse(self, response):\n"
+        "        yield scrapy.Request('https://example.com/a/1', callback=self.parse_article,\n"
+        "                             headers=self.headers)\n"
+        "    def parse_article(self, response):\n"
+        "        return None\n"
+    )
+    leaky = preflight_generated_code({**state, "spider_code": body.format(settings="")})
+    fixed = preflight_generated_code({**state, "spider_code": body.format(
+        settings="    custom_settings = {'USER_AGENT': 'Mozilla/5.0'}\n")})
+
+    leaky_errors = (leaky.get("generation_preflight") or {}).get("errors") or []
+    fixed_errors = (fixed.get("generation_preflight") or {}).get("errors") or []
+    return (
+        "entry_request_misses_replay_headers" in leaky_errors
+        and "entry_request_misses_replay_headers" not in fixed_errors
+    ), f"漏掉={leaky_errors} 補上後={fixed_errors}"
+
+
 def t_fixture_replays_the_document_the_candidate_will_actually_get():
     """重播用的文件要跟候選實際會拿到的同一種，否則是拿 A 的頁面測 B 的碼。
 
@@ -401,6 +444,7 @@ def t_fixture_only_demands_details_the_listing_actually_links_to():
 
 
 TESTS = [
+    t_preflight_catches_entry_request_without_replay_headers,
     t_fixture_replays_the_document_the_candidate_will_actually_get,
     t_fixture_only_demands_details_the_listing_actually_links_to,
     t_material_compiler_removes_dom_noise_and_unselected_sources,

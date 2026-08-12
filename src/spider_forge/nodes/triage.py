@@ -35,6 +35,32 @@ def _blocked_by_authorization(report: dict) -> bool:
     )
 
 
+# 機器人防護頁的字樣（沿用 browser.probe 判 soft_block 的同一組概念）。
+_WAF_MARKERS = (
+    "cloudflare", "attention required", "access denied", "captcha",
+    "verify you are human", "just a moment", "請稍候", "驗證您是人類",
+)
+
+
+def _blocked_by_waf(report: dict) -> bool:
+    """被擋是因為**機器人防護**而不是因為需要帳號。
+
+    兩者都回 403，處置卻完全相反：WAF 要降速／稍後再試／換傳輸，
+    授權牆要換入口或取得帳號。歸成同一類的話，人會照著錯的方向查——
+    工商時報實測就是這樣：Cloudflare 擋下來卻寫「需要登入態或授權」。
+    """
+    if report.get("soft_block_detected") is True:
+        return True
+    haystack = " ".join(
+        str(value or "").lower()
+        for value in (
+            report.get("title"),
+            (report.get("http_entry_sample") or {}).get("body_excerpt"),
+        )
+    )
+    return any(marker in haystack for marker in _WAF_MARKERS)
+
+
 class FeasibilityTriage(Node):
     """recon 後、生成前的確定性可行性分流（D1：KILL 立即轉死信、不生成）。"""
 
@@ -121,6 +147,17 @@ class FeasibilityTriage(Node):
             #   discovery_empty —— 進得去，但這個入口真的沒有文章連結
             # 前者要換入口／取得授權，後者多半是入口 URL 給錯，處置完全不同。
             if not replayable and not html_links:
+                if _blocked_by_authorization(report) and _blocked_by_waf(report):
+                    # 先問「是不是機器人防護」再問「是不是授權」：兩者都回 403，
+                    # 但一個要降速稍後再試，一個要去拿帳號，指錯方向會讓人白查。
+                    return self._kill(
+                        "KILL_waf_blocked",
+                        f"被機器人防護擋下（http_status={report.get('http_status')} "
+                        f"http_entry_status={http_entry_status} "
+                        f"title={report.get('title')!r}）：兩軌都取不到內容。"
+                        "不是缺帳號——降低頻率稍後再試，或改用不同的傳輸方式",
+                        report,
+                    )
                 if _blocked_by_authorization(report):
                     return self._kill(
                         "KILL_auth_required",

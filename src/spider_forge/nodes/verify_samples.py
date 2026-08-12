@@ -16,7 +16,8 @@
 
 from __future__ import annotations
 
-from ..shared.samples import verify_detail_samples
+from ..shared.fetch_strategies import selected_structured
+from ..shared.samples import verify_api_records, verify_detail_samples
 from ..state import SpiderForgeState
 from .base import Node
 
@@ -31,20 +32,26 @@ class VerifySamples(Node):
     def __call__(self, state: SpiderForgeState) -> dict:
         urls = list(state.get("discovered_detail_urls") or [])
         if not urls:
-            # 前端資料介面的記錄自帶內容，沒有明細頁可抓——照 verify_pagination 對
-            # cursor 型的做法，標明「未比對」而不是假裝驗過，也不是判它失敗。
             records = int((state.get("link_discovery") or {}).get("api_records") or 0)
+            if not records:
+                return {
+                    "detail_samples": [],
+                    "sample_verification": {
+                        "passed": False, "checked": 0, "compared": False,
+                        "reason": "沒有任何明細頁候選可驗證",
+                    },
+                }
+            # 前端資料介面沒有明細頁可抓，但**不能因此就放行**：記錄筆數是靠 JSON
+            # 鍵名形狀猜的，股價與排行榜同樣會中（鉅亨網行情頁實測）。改成驗記錄內容。
+            verdict = verify_api_records(selected_structured(state))
             return {
                 "detail_samples": [],
                 "sample_verification": {
-                    "passed": bool(records),
-                    "checked": 0,
+                    **verdict,
+                    "checked": verdict.get("records", 0),
                     "compared": False,
-                    "reason": (
-                        f"前端資料介面自帶 {records} 筆文章記錄，沒有明細頁可驗證"
-                        if records
-                        else "沒有任何明細頁候選可驗證"
-                    ),
+                    "reason": verdict.get("reason")
+                    or f"前端資料介面的 {records} 筆記錄有標題也有時間，沒有明細頁可再比對",
                 },
             }
 

@@ -120,6 +120,43 @@ def t_duplicate_flood_rejected():
     return ok, f"pass={r['pass']} unique={r['unique_valid_count']} ratio={r['unique_ratio']}"
 
 
+def t_discovery_and_quality_gate_read_url_patterns_the_same_way():
+    """一份 article_url_patterns 只能有一種意思。
+
+    科技新報實測：偵查那邊比「完整網址」、品質閘門比「path」，於是含 host 的樣式
+    在偵查全數通過、到閘門把 24 筆全擋成 url_not_article——看起來像爬蟲抓錯，
+    其實是同一份設定被兩套規則解讀，錯了也找不到。
+    """
+    from spider_forge.shared.evidence import _matches_validation_url
+    from spider_forge.shared.quality_rules import validate_items
+
+    cfg = {
+        "allowed_domains": ["technews.tw"],
+        "article_url_patterns": [r"/20\d\d/\d\d/\d\d/"],
+        "min_content_chars": 40,
+        "min_valid_items": 2,
+    }
+    now = datetime.now(_TW).isoformat()
+    urls = [
+        "https://technews.tw/2026/08/12/samsung-euv/",
+        "https://finance.technews.tw/2026/08/12/sme-plan/",   # 子網域也算數
+        "https://technews.tw/category/semiconductor/",         # 分類頁
+    ]
+    discovery = [_matches_validation_url(url, {"validation": cfg}) for url in urls]
+    verdict = validate_items(
+        [{"title": f"第{i}則夠長的新聞標題", "url": url,
+          "content": f"第{i}篇的獨立內文" * 20, "published_at": now}
+         for i, url in enumerate(urls)],
+        cfg,
+    )
+    return (
+        discovery == [True, True, False]
+        # 偵查放行的兩筆，閘門也要放行——兩邊對同一個網址的判斷必須一致
+        and verdict["valid_count"] == 2
+        and verdict["reject_reasons"] == {"url_not_article": 1}
+    ), f"discovery={discovery} valid={verdict['valid_count']} reasons={verdict['reject_reasons']}"
+
+
 def t_same_content_under_different_urls_rejected():
     """網址各不相同、內文卻是同一塊——content selector 抓到全站共用區塊就長這樣。
 
@@ -280,6 +317,7 @@ TESTS = [
     t_naive_date_rejected,
     t_none_fields_rejected,
     t_duplicate_flood_rejected,
+    t_discovery_and_quality_gate_read_url_patterns_the_same_way,
     t_same_content_under_different_urls_rejected,
     t_soft_block_page_rejected,
     t_overlong_media_excerpt_rejected,

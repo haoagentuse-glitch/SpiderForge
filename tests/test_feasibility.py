@@ -53,15 +53,29 @@ def t_challenge_page_wording_alone_does_not_kill():
             "http_entry_sample": {"status": 403, "link_samples": []},
         },
     })
+    plain_403 = graph.feasibility_triage({
+        "site_url": "https://members.example.com/news",
+        "validation": {"allowed_domains": ["members.example.com"]},
+        "recon_report": {
+            "http_status": 403,
+            "title": "Members only",           # 沒有任何機器人防護字樣
+            "api_candidates": [], "feed_candidates": [], "link_samples": [],
+            "http_entry_sample": {"status": 403, "link_samples": []},
+        },
+    })
     return (
         # 有文章連結 → 照樣往下試，不因字樣就放棄
         blocked_but_has_links["feasibility"]["class"].startswith("FEASIBLE_")
         and graph.route_after_triage(blocked_but_has_links) == "strategy_decision"
-        # 真的零證據 → 仍然 KILL，但說出真正原因而不是籠統的 policy_kill
-        and blocked_and_empty["feasibility"]["class"] == "KILL_auth_required"
+        # 真的零證據 → 仍然 KILL，但說出真正原因而不是籠統的 policy_kill。
+        # 帶機器人防護字樣的 403 要跟「需要帳號」分開：一個降速稍後再試，
+        # 一個要去拿授權，歸成同一類會讓人照著錯的方向查（工商時報實測）。
+        and blocked_and_empty["feasibility"]["class"] == "KILL_waf_blocked"
+        and plain_403["feasibility"]["class"] == "KILL_auth_required"
     ), (
         f"有連結={blocked_but_has_links['feasibility']['class']} "
-        f"零證據={blocked_and_empty['feasibility']['class']}"
+        f"防護頁={blocked_and_empty['feasibility']['class']} "
+        f"純 403={plain_403['feasibility']['class']}"
     )
 
 
@@ -108,7 +122,7 @@ def t_blocked_and_empty_entry_escalates_without_touching_generate():
             and escalated["status"] == "escalated"
             and dead_letter_path
             and Path(dead_letter_path).exists()
-            and record["failure_class"] == "KILL_auth_required"
+            and record["failure_class"] == "KILL_waf_blocked"
             and "spider_code" not in merged  # generate_spider 從未被呼叫，state 沒有它會寫入的欄位
         )
     finally:

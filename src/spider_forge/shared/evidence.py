@@ -432,14 +432,19 @@ def _matches_validation_url(url: str, state: SpiderForgeState) -> bool:
     host = parsed.hostname.lower()
     if domains and not any(host == domain or host.endswith("." + domain) for domain in domains):
         return False
+    # 比對對象要跟品質閘門（quality_rules._url_ok）**完全一樣**：path + query。
+    # 踩過的坑（科技新報實測）：這裡原本比完整網址，閘門比 path，於是含 host 的
+    # 樣式在偵查通過、到閘門把 24 筆全擋成 url_not_article——看起來像爬蟲抓錯，
+    # 其實是同一份設定被兩套規則解讀。一份設定只能有一種意思，不然錯了也找不到。
+    target = parsed.path + (f"?{parsed.query}" if parsed.query else "")
     if any(
-        re.search(pattern, url, re.IGNORECASE)
+        re.search(pattern, target, re.IGNORECASE)
         for pattern in validation.get("excluded_url_patterns") or []
     ):
         return False
     patterns = validation.get("article_url_patterns") or []
     return not patterns or any(
-        re.search(pattern, url, re.IGNORECASE) for pattern in patterns
+        re.search(pattern, target, re.IGNORECASE) for pattern in patterns
     )
 
 

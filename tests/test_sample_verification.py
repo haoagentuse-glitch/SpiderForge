@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import json
+
 from spider_forge.nodes.verify_samples import VerifySamples
 from spider_forge.shared.samples import (
     sample_signals,
+    verify_api_records,
     text_similarity,
     verify_detail_samples,
 )
@@ -187,6 +190,31 @@ def t_different_section_pages_are_rejected():
     ), f"result={result}"
 
 
+def t_dated_url_counts_as_date_evidence():
+    """科技新報實測誤殺：文章**完全沒有結構化日期**（沒有 meta、沒有 JSON-LD、
+    也沒有 <time>），日期只在網址 /2026/08/12/ 與頁面文字裡。只認 meta 的話，
+    整個站四種抓法全被判成分類頁——那是判準的問題，不是站台的問題。
+
+    但只認**網址路徑**，不認頁面文字裡的日期：列表頁上每則都有「2 小時前」，
+    認文字等於把這關拆掉。
+    """
+    dated_url = [
+        _page("https://technews.tw/2026/08/12/samsung-euv-delay/", "三星延後導入", _words("a", 300)),
+        _page("https://technews.tw/2026/08/12/apple-oled-cycle/", "蘋果延長週期", _words("b", 300)),
+    ]
+    section = [
+        _page("https://technews.tw/category/semiconductor/", "半導體", _words("c", 300)),
+        _page("https://technews.tw/category/ai/", "人工智慧", _words("d", 300)),
+    ]
+    accepted = verify_detail_samples(dated_url, _STATE)
+    rejected = verify_detail_samples(section, _STATE)
+    return (
+        accepted["passed"]
+        and not rejected["passed"]
+        and all("分類頁" in row["reason"] for row in rejected["rejected"])
+    ), f"帶日期網址={accepted['passed']} 分類頁={rejected['reason']}"
+
+
 def t_sites_without_structured_dates_can_opt_out():
     """真的有站台的文章不帶結構化日期，要留一個關得掉的開關。"""
     samples = [
@@ -230,6 +258,59 @@ def t_thin_or_titleless_pages_are_rejected_with_reasons():
         and "抓取失敗" in reasons
         and "HTTP 404" in reasons
     ), f"result={result}"
+
+
+def t_quote_api_records_are_not_articles():
+    """報價 API 不能因為「有 name 有 id」就被當成文章清單。
+
+    鉅亨網台股行情頁實測：兩種 DOM 抓法都被檢查二正確擋下，前端資料介面那一階
+    卻只憑 article_record_count 就放行，一路跑到產碼花掉三次模型呼叫才被閘門攔住。
+    筆數是靠 JSON 鍵名形狀猜的，報價與排行榜同樣會中——所以要看內容不是看形狀。
+    """
+    quotes = [{
+        "url": "https://example.com/api/quotes",
+        "body_excerpt": json.dumps({"data": [
+            {"name": "台積電", "id": 2330, "price": 1080, "date": "0812"},
+            {"name": "聯發科", "id": 2454, "price": 1355, "date": "0812"},
+        ]}),
+    }]
+    articles = [{
+        "url": "https://example.com/api/news",
+        "body_excerpt": json.dumps({"items": [
+            {"title": "央行升息一碼 房貸族每月多繳千元", "publishAt": "2026-08-12T09:00:00+08:00"},
+            {"title": "台股收盤上漲 電子股領軍走揚", "publishAt": "2026-08-12T13:30:00+08:00"},
+        ]}),
+    }]
+    same_title = [{
+        "url": "https://example.com/api/news",
+        "body_excerpt": json.dumps({"items": [
+            {"title": "鉅亨網即時新聞總覽", "publishAt": "2026-08-12T09:00:00+08:00"},
+            {"title": "鉅亨網即時新聞總覽", "publishAt": "2026-08-12T13:30:00+08:00"},
+        ]}),
+    }]
+    rejected = verify_api_records(quotes)
+    accepted = verify_api_records(articles)
+    duplicated = verify_api_records(same_title)
+    return (
+        not rejected["passed"] and "標題" in rejected["reason"]
+        and accepted["passed"] and accepted["with_date"] == 2
+        and not duplicated["passed"] and "都一樣" in duplicated["reason"]
+    ), f"報價={rejected['reason']} 文章={accepted} 同標題={duplicated['reason']}"
+
+
+def t_api_records_without_dates_are_rejected():
+    """發佈時間是 Article 的必填欄位，記錄裡一個都解析不出來就教不了模型。"""
+    undated = [{
+        "url": "https://example.com/api/list",
+        "body_excerpt": json.dumps({"data": [
+            {"title": "台積電法說會重點整理", "id": 1},
+            {"title": "聯發科新品發表會紀要", "id": 2},
+        ]}),
+    }]
+    verdict = verify_api_records(undated)
+    return (
+        not verdict["passed"] and "發佈時間" in verdict["reason"]
+    ), f"verdict={verdict}"
 
 
 def t_browser_sample_uses_native_title_and_text():
@@ -323,11 +404,14 @@ TESTS = [
     t_shared_chrome_does_not_inflate_similarity,
     t_three_identical_pages_are_still_rejected,
     t_different_section_pages_are_rejected,
+    t_dated_url_counts_as_date_evidence,
     t_sites_without_structured_dates_can_opt_out,
     t_navigation_link_looping_back_to_entry_is_rejected,
     t_one_survivor_out_of_many_does_not_pass,
     t_a_single_candidate_is_honestly_marked_unverified,
     t_thin_or_titleless_pages_are_rejected_with_reasons,
+    t_quote_api_records_are_not_articles,
+    t_api_records_without_dates_are_rejected,
     t_browser_sample_uses_native_title_and_text,
     t_script_and_style_do_not_count_as_content,
     t_similarity_is_symmetric_and_bounded,

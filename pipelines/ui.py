@@ -167,7 +167,14 @@ def _summary(node: str, update: dict[str, Any]) -> str:
         return "通過" if result.get("passed") else f"不通過 - {result.get('errors')}"
     if node == "fixture_test":
         result = get("fixture_result") or {}
-        return "通過" if result.get("passed") else f"不通過 - {result.get('errors')}"
+        if result.get("passed"):
+            return "通過"
+        # callback 的 traceback 才講得出「為什麼抽不到」，只印 errors 的話畫面上
+        # 永遠只有一句 insufficient_items，看不出真正的原因（科技新報實測踩到）。
+        blame = "；".join(
+            str(row).splitlines()[-1] for row in (result.get("callback_errors") or [])
+        )
+        return f"不通過 - {result.get('errors')}" + (f"｜{blame[:200]}" if blame else "")
     if node == "sandbox_test":
         result = get("test_result") or {}
         return f"抓到 {result.get('item_count')} 筆"

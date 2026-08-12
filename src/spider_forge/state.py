@@ -16,6 +16,9 @@ KILL_FAILURE_CLASSES = frozenset(
         "signature_required",
         "discovery_empty",
         "auth_required",
+        # 機器人防護擋下，且兩軌都零證據。跟 auth_required 分開是因為處置不同：
+        # 這個要降速稍後再試，不是去拿帳號。
+        "waf_blocked",
         # 四種抓法都試完、三道檢查仍過不了：換模型重寫也救不了錯的證據。
         "discovery_unusable",
     }

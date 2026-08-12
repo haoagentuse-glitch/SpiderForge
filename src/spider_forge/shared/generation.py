@@ -465,6 +465,19 @@ def preflight_generated_code(state: SpiderForgeState) -> dict:
         if playwright_requests < 2:
             errors.append("browser_transport_not_applied_to_entry_and_detail")
 
+    # 入口請求有沒有帶到 recon 驗證過的身分。
+    # 踩過的坑（科技新報實測）：候選定義了 headers 也傳給明細請求，但沒有自寫
+    # start_requests——start_urls 產生的入口請求走 Scrapy 預設 UA，當場 403
+    # （實測同一頁：預設 UA 403、瀏覽器 UA 200），整站抓 0 筆。
+    # 這是靜態就看得出來的，不該留到實跑才發現，更不該被歸成 selector 寫錯。
+    if "start_urls" in code and "def start_requests" not in code:
+        applies_globally = any(
+            setting in code
+            for setting in ("USER_AGENT", "DEFAULT_REQUEST_HEADERS")
+        )
+        if not applies_globally:
+            errors.append("entry_request_misses_replay_headers")
+
     published_probe = (state.get("evidence_pack") or {}).get(
         "published_at_probe"
     ) or {}

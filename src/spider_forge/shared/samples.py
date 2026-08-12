@@ -41,6 +41,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from html.parser import HTMLParser
 from typing import Any
@@ -139,6 +140,24 @@ def document_published_at(sample: dict[str, Any]) -> str | None:
     return None
 
 
+# 網址路徑裡的日期，例如 /2026/08/12/ 或 /2026-08-12-。
+_URL_DATE_RE = re.compile(r"/20\d\d[-/]\d{1,2}[-/]\d{1,2}(?=[-/])")
+
+
+def url_dated(url: str) -> bool:
+    """網址路徑本身帶日期——這也是「這頁是某一天的文章」的結構證據。
+
+    加這條是因為實測誤殺：科技新報的文章**完全沒有結構化日期**（沒有
+    ``article:published_time``、沒有 JSON-LD、也沒有 ``<time>``），日期只寫在
+    網址 ``/2026/08/12/`` 與頁面上「發布日期」旁的純文字裡。只認 meta 的話，
+    整個站四種抓法全被判成分類頁——那是判準的問題，不是站台的問題。
+
+    刻意只認**網址路徑**而不認頁面文字裡的日期：列表頁上每一則都有「2 小時前」，
+    認文字會把分類頁放回來，等於把這關拆掉（BBC 實測就是靠這關擋住的）。
+    """
+    return bool(_URL_DATE_RE.search(str(url or "")))
+
+
 def _shingles(text: str) -> set[tuple[str, ...]]:
     words = text.lower().split()
     if len(words) < _SHINGLE_SIZE:
@@ -180,6 +199,93 @@ def _residual_similarity(left: set, right: set, boilerplate: set) -> float:
         # 那就是同一頁。這裡回 0 的話，最該擋的情況反而會過關。
         return 1.0
     return len(residual_left & residual_right) / len(residual_left | residual_right)
+
+
+_TITLE_KEYS = ("title", "headline", "subject", "name")
+_DATE_KEYS = (
+    "published_at", "publishedat", "publishat", "published", "publishdate",
+    "publish_date", "pubdate", "date", "datetime", "created_at", "updated_at",
+)
+_MIN_RECORD_TITLE = 6      # 標題短於這個多半是分類名或代號，不是新聞標題
+
+
+def _record_fields(record: dict[str, Any]) -> tuple[str, Any]:
+    """從一筆記錄裡取出標題與時間（鍵名大小寫與底線寫法都收）。"""
+    lowered = {str(key).lower(): value for key, value in record.items()}
+    title = next(
+        (str(lowered[key]).strip() for key in _TITLE_KEYS
+         if isinstance(lowered.get(key), str) and str(lowered[key]).strip()),
+        "",
+    )
+    stamp = next((lowered[key] for key in _DATE_KEYS if lowered.get(key)), None)
+    return title, stamp
+
+
+def _walk_records(value: Any, out: list[dict], depth: int = 0) -> None:
+    """把 JSON 裡長得像「一筆記錄」的 dict 撈出來（同 browser._json_evidence 的形狀規則）。"""
+    if depth > 5 or len(out) >= 40:
+        return
+    if isinstance(value, dict):
+        title, stamp = _record_fields(value)
+        if title or stamp:
+            out.append(value)
+        for child in list(value.values())[:50]:
+            _walk_records(child, out, depth + 1)
+    elif isinstance(value, list):
+        for child in value[:50]:
+            _walk_records(child, out, depth + 1)
+
+
+def verify_api_records(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """檢查二的前端資料介面版：那些「記錄」真的是文章嗎。
+
+    **為什麼不能只數筆數**：``article_record_count`` 是靠 JSON 的鍵名形狀猜的
+    （有 title 又有 url/date 就算一筆），**股價、指數、排行榜的陣列同樣會中**。
+    實測貼了鉅亨網的台股行情頁（``/twstock``）：兩種 DOM 抓法都被檢查二正確擋下，
+    卻在這一階放行，一路跑到產碼，花掉三次模型呼叫才被閘門攔住。
+
+    所以這裡看的是內容而不是形狀，判準跟 HTML 那邊同一套：
+    有像樣的標題、有解析得出來的時間、而且標題不能每筆都一樣。
+    """
+    from .evidence import _classify_datetime
+
+    records: list[dict[str, Any]] = []
+    for candidate in candidates:
+        for item in candidate.get("feed_items") or []:
+            records.append(dict(item))
+        body = str(candidate.get("body_excerpt") or "")
+        if body:
+            try:
+                _walk_records(json.loads(body), records)
+            except (TypeError, ValueError):
+                pass   # body 被截斷或不是 JSON：那就用不到它，不是錯誤
+
+    titled = []
+    dated = 0
+    for record in records:
+        title, stamp = _record_fields(record)
+        if len(title) >= _MIN_RECORD_TITLE:
+            titled.append(title)
+        if stamp is not None and _classify_datetime(stamp)[0] not in {"missing", "unknown"}:
+            dated += 1
+
+    result = {
+        "records": len(records),
+        "with_title": len(titled),
+        "with_date": dated,
+        "distinct_titles": len(set(titled)),
+    }
+    # 一筆記錄也可能是合法的（清單就是短），所以不看筆數看性質：
+    # 標題像不像標題、時間解不解析得出來。「標題不能全一樣」要有兩筆才問得出口。
+    if not titled:
+        return {**result, "passed": False,
+                "reason": f"{len(records)} 筆記錄沒有一筆有像樣的標題（多半是報價或排行榜，不是文章清單）"}
+    if not dated:
+        return {**result, "passed": False,
+                "reason": f"{len(records)} 筆記錄沒有一筆解析得出發佈時間，不像文章清單"}
+    if len(titled) >= 2 and len(set(titled)) < 2:
+        return {**result, "passed": False, "reason": "所有記錄的標題都一樣，不像文章清單"}
+    return {**result, "passed": True, "reason": ""}
 
 
 def _entry_urls(state: dict[str, Any]) -> set[str]:
@@ -237,14 +343,20 @@ def verify_detail_samples(
             })
             continue
         published_at = document_published_at(sample)
-        if require_date and not published_at:
+        if require_date and not published_at and not url_dated(url):
             # 分類頁跟文章在長度與連結密度上完全重疊，只有這條分得開（見模組說明）。
             rejected.append({
                 "url": url,
-                "reason": "沒有文件層級的發佈時間，疑似分類頁而非文章明細頁",
+                "reason": "沒有文件層級的發佈時間，網址也沒有日期，疑似分類頁而非文章明細頁",
             })
             continue
-        accepted.append({**signals, "published_at": published_at})
+        accepted.append({
+            **signals,
+            "published_at": published_at,
+            # 只有網址帶日期時要留下痕跡：那代表這個站沒有結構化日期，
+            # 產碼要自己從頁面文字或網址解析，時區也得靠 source_timezone 補。
+            "date_source": "document" if published_at else "url_path",
+        })
 
     result: dict[str, Any] = {
         "checked": len(samples),
