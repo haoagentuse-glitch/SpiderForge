@@ -273,12 +273,10 @@ def probe(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
-        # Chromium 原生 UA 本就是真實瀏覽器；只加一條 X-Purpose 誠實痕跡（spec v2 §6）。
-        from ..shared.request_identity import COURSE_PURPOSE
-
+        # Chromium 原生 UA 本就是真實瀏覽器，不再額外加自訂 header——
+        # 非標準 header 是 CDN 的機器人特徵（見 shared/request_identity.py 的實測）。
         context = browser.new_context(
             storage_state=storage_state_path if storage_state_path else None,
-            extra_http_headers={"X-Purpose": COURSE_PURPOSE},
         )
         page = context.new_page()
         page.on("response", _on_response)
@@ -325,17 +323,28 @@ def probe(
             body_text = page.locator("body").inner_text()[:2000]
         except Exception:
             body_text = ""
+        # 新聞明細頁不一定有 <main>／[role=main]／#content——中央社就都沒有。
+        # 舊寫法會在那個 locator 上等滿 30 秒才放棄，然後回一份**空的** DOM 與空正文；
+        # 後面每一關都在空證據上做判斷（樣本驗證會說「正文 0 字」，看起來像站台的錯）。
+        # 改成：短逾時、多試幾個常見容器、最後退回 body，抓到有字的就停。
         dom_capture_error = None
-        try:
-            main = page.locator(
-                "main, [role='main'], #content"
-            ).first
-            main_dom = main.evaluate(_SANITIZE_DOM)
-            main_text = main.inner_text()
-        except Exception as exc:
-            main_dom = ""
-            main_text = ""
-            dom_capture_error = str(exc)[:500]
+        main_dom = ""
+        main_text = ""
+        for selector in ("main, [role='main'], article, #content", "body"):
+            try:
+                node = page.locator(selector).first
+                candidate_dom = node.evaluate(_SANITIZE_DOM, timeout=5000)
+                candidate_text = node.inner_text(timeout=5000)
+            except Exception as exc:  # noqa: BLE001 — 換下一個容器再試
+                dom_capture_error = str(exc)[:500]
+                continue
+            if candidate_text.strip():
+                main_dom, main_text, dom_capture_error = (
+                    candidate_dom, candidate_text, None,
+                )
+                break
+            # 容器在但沒有文字（常見於外層 shell），記著再往下退
+            main_dom, main_text = candidate_dom, candidate_text
         try:
             canonical_href = page.locator('link[rel="canonical"]').first.get_attribute(
                 "href"
@@ -437,6 +446,90 @@ def probe(
         "link_samples": link_samples,
         "network_count": len(network),
         "api_candidates": api_candidates,
+    }
+
+
+# 捲動探測不能沿用 probe() 的 slice(0, 400)：新載入的連結接在清單尾端，
+# 前 400 個永遠是同一批導覽，於是「捲出更多」會被看成「什麼都沒發生」。
+# 實測鉅亨網捲 4 次會到 1164 個連結，取樣上限必須高過這個量級。
+_COLLECT_LINKS = """(els) => els.slice(0, 2000).map(a => ({
+    href: a.href,
+    text: (a.innerText || a.textContent || '').replace(/\\s+/g, ' ').trim()
+}))"""
+
+
+def probe_scroll(
+    url: str,
+    *,
+    timeout_ms: int = 30000,
+    headless: bool = True,
+    rounds: int = 3,
+    settle_ms: int = 3000,
+    max_links: int = 400,
+) -> dict[str, Any]:
+    """捲到底幾次，看連結數會不會增加——無限捲動就是這樣載入下一頁的。
+
+    **偵測不等於可用**（跟 verify_pagination 同一個道理）：頁面有捲動監聽器不代表
+    真的會載入更多，很多站捲到底只是把 footer 露出來。唯一算數的證據是
+    **連結數真的變多**，所以這裡只回一件事實——每一輪捲完各有幾個連結。
+
+    捲不動就早退：連續一輪沒有新連結就停，不把時間花在沒有無限捲動的站上。
+    """
+    growth: list[int] = []
+    link_samples: list[dict[str, str]] = []
+    navigation_error = None
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=headless)
+        context = browser.new_context()
+        page = context.new_page()
+        try:
+            page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+        except Exception as exc:  # noqa: BLE001 — 捲動探測失敗只代表這一階不可用
+            navigation_error = str(exc)[:500]
+
+        if not navigation_error:
+            seen: set[str] = set()
+
+            def collect() -> int:
+                try:
+                    rows = page.locator("a[href]").evaluate_all(_COLLECT_LINKS)
+                except Exception:  # noqa: BLE001
+                    return len(seen)
+                for row in rows:
+                    href = row.get("href")
+                    if href and href not in seen:
+                        seen.add(href)
+                        link_samples.append(
+                            {"url": href, "text": (row.get("text") or "")[:300]}
+                        )
+                return len(seen)
+
+            page.wait_for_timeout(settle_ms)
+            growth.append(collect())
+            for _ in range(rounds):
+                try:
+                    page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                    # 有些站掛的是鍵盤/捲動事件而不是 scroll 位置監聽，補一下 End
+                    page.keyboard.press("End")
+                except Exception:  # noqa: BLE001
+                    break
+                page.wait_for_timeout(settle_ms)
+                total = collect()
+                growth.append(total)
+                if total == growth[-2]:
+                    break   # 這一輪沒有新連結：捲不出東西，不再浪費時間
+
+        context.close()
+        browser.close()
+
+    return {
+        "url": url,
+        "link_samples": link_samples[:max_links],
+        "links_after_each_round": growth,
+        "rounds_scrolled": max(0, len(growth) - 1),
+        "loaded_more": bool(len(growth) > 1 and growth[-1] > growth[0]),
+        "navigation_error": navigation_error,
     }
 
 

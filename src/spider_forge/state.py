@@ -16,6 +16,8 @@ KILL_FAILURE_CLASSES = frozenset(
         "signature_required",
         "discovery_empty",
         "auth_required",
+        # 四種抓法都試完、三道檢查仍過不了：換模型重寫也救不了錯的證據。
+        "discovery_unusable",
     }
 )
 
@@ -60,6 +62,13 @@ class ForgeInternal(TypedDict, total=False):
     recon_report: dict[str, Any]
     discovered_detail_urls: list[str]  # discover_links 挑出的文章明細頁候選
     link_discovery: dict[str, Any]     # 挑選方法與候選數（診斷用）
+    detail_samples: list[dict[str, Any]]   # verify_samples 抓下來的明細樣本；collect_evidence 沿用同一份
+    sample_verification: dict[str, Any]    # 樣本是不是真文章的判定與原因（診斷用）
+
+    # ── 偵查子迴圈的轉盤（見 nodes/fetch_strategy.py）──
+    fetch_strategy: str | None         # 這一輪用哪種抓法；None = 四種都試完了
+    fetch_strategy_pool: list[str]     # 依 recon 證據判定可用的抓法，由便宜到貴
+    discovery_attempts: list[dict[str, Any]]  # 每一輪卡在哪個檢查、為什麼（死信要用）
     pagination: dict[str, Any]         # 驗證過的翻頁機制（verify_pagination）
     pagination_probe: dict[str, Any]   # 實抓第 2 頁的驗證過程（診斷用）
     feasibility: dict[str, Any]  # feasibility_triage 輸出：class/reason/evidence_summary（spec v2 §3.2）

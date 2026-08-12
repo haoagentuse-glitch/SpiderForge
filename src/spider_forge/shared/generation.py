@@ -105,7 +105,22 @@ def strategy_decision(state: SpiderForgeState) -> dict:
         f"{json.dumps(discovered_article_links, ensure_ascii=False)[:3500]}\n"
         f"ARIA：{(report.get('aria_snapshot') or '')[:1500]}"
     )
-    result = judge(system=system, user=user, schema=STRATEGY_SCHEMA)
+    try:
+        result = judge(system=system, user=user, schema=STRATEGY_SCHEMA)
+    except Exception as exc:  # noqa: BLE001 — 判官不可用不該讓整場死掉
+        # 本機模型沒開時原本會直接拋例外，整個 run 連死信都不會留。但這一關的
+        # 產出後面全都要再過一次確定性強制（不可重播的 api 會被改回 dom），
+        # 所以這裡只需要一個保守的起手式：有可重播來源就先當 api，否則走 HTML。
+        # 降級原因照 discover_links 的慣例留在 state 裡，事後看得出誰在做決定。
+        strongest = viable_candidates[0] if viable_candidates else {}
+        result = {
+            "strategy": "api" if strongest else "dom",
+            "chosen_api": str(strongest.get("url") or ""),
+            "confidence": 0.5,
+            "reason": "策略判官不可用，改用確定性起手式；後續證據強制仍會把不可重播的來源改回 HTML。",
+            "decision_method": "deterministic_fallback",
+            "fallback_reason": str(exc)[:200],
+        }
     if viable_candidates:
         strongest = viable_candidates[0]
         content_contract = (

@@ -253,7 +253,48 @@ def t_escalate_records_live_policy_kill_as_kill_class():
     return ok, f"failure_class={result.get('failure_class')} action={record['suggested_action'][:16]}"
 
 
+def t_judge_outage_still_produces_a_diagnosis():
+    """診斷模型不可用不該讓整場死掉。
+
+    踩過的坑：本機 Ollama 沒開時，未知錯誤的診斷直接拋例外穿出 graph——
+    status=error、沒有死信、沒有診斷紀錄，最需要證據的時候什麼都沒有。
+    診斷的用途是「歸類 + 給修復方向」，模型不在就用確定性訊號歸類，
+    照樣進得了修復迴圈，只是少了那句自然語言的建議。
+    """
+    from spider_forge.clients import judge as judge_module
+    from spider_forge.shared import repair as repair_module
+
+    original = judge_module.judge
+
+    def dead_judge(**_kwargs):
+        raise RuntimeError("Ollama 連線失敗（http://localhost:11434）")
+
+    judge_module.judge = dead_judge
+    try:
+        update = repair_module.diagnose_failure({
+            "test_result": {
+                "exit_code": 1,
+                "item_count": 0,
+                "stderr_tail": "something nobody has a pattern for",
+            },
+            "validation_result": {"pass": False},
+            "retry_count": 0,
+        })
+    finally:
+        judge_module.judge = original
+
+    diagnosis = update["diagnosis"]
+    return (
+        diagnosis["error_signature"] == "diagnosis_unavailable"
+        and "Ollama" in diagnosis["fallback_reason"]
+        # 仍要有可路由的分類，否則修復迴圈不知道往哪走
+        and bool(update["failure_class"])
+        and update["retry_count"] == 1
+    ), f"diagnosis={diagnosis} failure_class={update['failure_class']}"
+
+
 TESTS = [
+    t_judge_outage_still_produces_a_diagnosis,
     t_provider_failure_does_not_consume_repair_budget,
     t_provider_failure_routes_bounded_retry_then_escalate,
     t_provider_failure_reads_failure_class_from_diagnosis_too,

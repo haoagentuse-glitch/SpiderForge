@@ -39,17 +39,28 @@ def escalate_human(state: SpiderForgeState) -> dict:
     failure_class = state.get("failure_class") or feasibility.get("class") or (
         "topic_provider_unavailable" if topic_unavailable else "repair_exhausted"
     )
-    triage_reason = feasibility.get("reason") or (
-        "主題閘門服務不可用；未浪費 code repair 額度"
-        if topic_unavailable
-        else "兩輪定向修復仍未通過 live gate"
-    )
+    # 偵查子迴圈把四種抓法都試完時，「卡在哪一關」就是這批紀錄，
+    # 沒有它的話死信只會寫「偵查不可用」，看不出到底是挑不到連結還是樣本不對。
+    #
+    # 這一條必須排在 feasibility 之前判斷：triage 放行時也會寫 feasibility.reason
+    # （「存在可重播結構化候選」之類），拿它當第一順位的話，偵查失敗的死信會掛上
+    # 一句「當初看起來可做」的理由，正好把真正的原因蓋掉。
+    discovery_attempts = state.get("discovery_attempts") or []
+    if normalize_failure_class(failure_class) == "discovery_unusable":
+        triage_reason = f"{len(discovery_attempts)} 種抓法都試過，三道偵查檢查仍過不了"
+    elif feasibility.get("reason"):
+        triage_reason = str(feasibility["reason"])
+    elif topic_unavailable:
+        triage_reason = "主題閘門服務不可用；未浪費 code repair 額度"
+    else:
+        triage_reason = "兩輪定向修復仍未通過 live gate"
     recon_evidence = feasibility.get("evidence_summary") or evidence_summary(
         state.get("recon_report") or {}
     )
 
     tried = {
         "strategy": state.get("strategy"),
+        "discovery_attempts": discovery_attempts,
         "retry_count": state.get("retry_count", 0),
         "kimi_used": state.get("kimi_used", False),
         "error_signature_history": state.get("error_signature_history", []),

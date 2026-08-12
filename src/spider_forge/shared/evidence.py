@@ -232,6 +232,8 @@ def _fetch_browser_sample(url: str) -> dict[str, Any]:
         or report.get("final_url")
         or url,
         "status": report.get("http_status"),
+        # 瀏覽器直接讀得到 <title>，比事後解析 HTML 準；樣本驗證要用。
+        "title": report.get("title"),
         "content_type": "text/html",
         "capture_source": "public_browser",
         "body_excerpt": report.get("dom_excerpt") or "",
@@ -243,6 +245,56 @@ def _fetch_browser_sample(url: str) -> dict[str, Any]:
         "navigation_error": report.get("navigation_error"),
         "soft_block_detected": report.get("soft_block_detected"),
     }
+
+
+# 保存頁面時要留多少原始 HTML。**這個數字不是排版偏好，是「要的東西在不在裡面」**：
+# 截斷是按字元位置切的，跟內容在哪裡完全沒有關係。三個站實測（2026-08-12）：
+#
+#   頁面            HTML 總長   要的東西在第幾字
+#   中央社 明細頁    105,415     正文從 30,935 開始
+#   中央社 列表頁     96,873     第一個文章連結在 3,657
+#   MoneyDJ 列表頁    58,097     第一個文章連結在 26,734
+#   經濟日報 列表頁  247,267     第一個文章連結在 4,160
+#   經濟日報 明細頁  249,022     <article> 在 125,802
+#
+# 上限只是記憶體與檔案大小的護欄，不是「要留哪一段」的決定——要留哪一段由下游
+# 依內容錨點決定。所以寧可訂得寬鬆：經濟日報的明細頁 249,022 字，
+# 上限訂 120,000 會把 <article> 整個切掉（差 5,802 字）。
+#
+# 舊的上限（明細 20,000、列表 6,000、再切成 2,500 進 prompt）把這些全切掉了：
+# 樣本驗證看到「正文 39 字」，產碼模型看到的列表 HTML 全是 <meta>，
+# 兩邊都會以為是站台的問題。送進 prompt 前還會由 materials.compact_dom_html
+# 依內容錨點壓到 2,200／7,000 字，所以這裡留大一點只影響證據檔大小，prompt 不會變長。
+_PAGE_SAMPLE_CHARS = 400000
+
+
+def fetch_detail_samples(
+    state: SpiderForgeState, urls: list[str]
+) -> list[dict[str, Any]]:
+    """抓明細樣本；傳輸方式由 recon 的 access 判定決定，不在這裡重新判斷。
+
+    抽出來共用是為了讓 ``verify_samples`` 節點與 ``collect_evidence`` 走**同一條**
+    抓取路徑——兩邊各寫一份的話，驗過的樣本和送進 prompt 的樣本可能來自不同傳輸，
+    等於驗了個寂寞。
+    """
+    from .fetch_strategies import uses_browser_transport
+
+    if state.get("access_mode", "public") != "public":
+        return []   # 帶登入態的抓取只在 recon 做，明細樣本不碰 session
+
+    # 抓連結與抓明細要用同一種傳輸（見 fetch_strategies.uses_browser_transport）；
+    # 還沒進階梯時退回 recon 的 access 判定，維持舊行為。
+    strategy = state.get("fetch_strategy")
+    if strategy:
+        browser = uses_browser_transport(strategy)
+    else:
+        browser = (state.get("recon_report") or {}).get("access_assessment") in {
+            "browser_public_ok",
+            "browser_required_http_blocked",
+        }
+    if browser:
+        return [_fetch_browser_sample(url) for url in urls]
+    return [_fetch_sample(url, max_chars=_PAGE_SAMPLE_CHARS) for url in urls]
 
 
 def _usable_detail_sample(sample: dict[str, Any]) -> bool:
@@ -632,10 +684,77 @@ def _probe_published_at(
 # ════════════════════════ 完整 live recon pack ════════════════════════
 
 
+def _article_links_first(
+    rows: list[dict[str, Any]], state: SpiderForgeState
+) -> list[dict[str, Any]]:
+    """符合驗證規則的連結排前面，其餘照原順序接在後面（去重）。"""
+    matched: list[dict[str, Any]] = []
+    rest: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        url = str((row or {}).get("url") or "")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        (matched if _matches_validation_url(url, state) else rest).append(row)
+    return [*matched, *rest]
+
+
+def _reconcile_strategy(state: SpiderForgeState) -> tuple[dict[str, Any], str]:
+    """讓「產碼要走哪條路」跟**偵查子迴圈實際驗證過的抓法**一致。
+
+    ``strategy_decision`` 在迴圈之前就跑，判的是「看起來該走 api / dom / hybrid」；
+    子迴圈跑完之後才知道「實際上哪一種抓法通過了三道檢查」。兩者不一致時，
+    以驗過的為準——這正是圖四要的「不再由模型判斷該用 API 還是 HTML，而是逐一試、
+    驗證通過才用」。
+
+    不一致是會出事的：MoneyDJ 實測 ``strategy_decision`` 判 hybrid 並選了一個
+    ``.axd`` 端點，但子迴圈是靠 HTML 連結過關的。照 hybrid 產碼等於用一個**沒被
+    驗證過**的端點當列表來源，錯了要到 sandbox 實跑才爆——而那時的診斷會怪 selector。
+    """
+    from .fetch_strategies import API_RECORDS, uses_browser_transport
+
+    detail = dict(state.get("strategy_detail") or {})
+    verified = state.get("fetch_strategy")
+    current = str(detail.get("strategy") or state.get("strategy") or "")
+    if not verified:
+        return detail, current or "dom"
+
+    links_based = verified != API_RECORDS
+    if links_based and current in {"api", "hybrid"}:
+        return {
+            **detail,
+            "strategy": "dom",
+            "chosen_api": "",
+            "reason": (
+                f"{detail.get('reason', '')} ［偵查子迴圈實測：列表用 "
+                f"{'瀏覽器' if uses_browser_transport(verified) else '純 HTTP'}"
+                "的頁面連結就取得到並通過三道檢查，改走 dom；原本選的結構化來源沒有被驗證過。］"
+            ).strip(),
+            "evidence_enforced": True,
+            "superseded_by_fetch_strategy": verified,
+        }, "dom"
+    if not links_based and current == "dom":
+        return {
+            **detail,
+            "strategy": "api",
+            "reason": (
+                f"{detail.get('reason', '')} "
+                "［偵查子迴圈實測：頁面連結挑不出文章，是前端資料介面的記錄通過檢查，改走 api。］"
+            ).strip(),
+            "evidence_enforced": True,
+            "superseded_by_fetch_strategy": verified,
+        }, "api"
+    return detail, current or "dom"
+
+
 def collect_evidence(state: SpiderForgeState) -> dict:
     """將 live recon 壓成 coding model 可直接使用的內部 EvidencePack。"""
+    from .fetch_strategies import uses_browser_transport
+
     recon_report = state.get("recon_report") or {}
-    chosen_api = (state.get("strategy_detail") or {}).get("chosen_api") or ""
+    strategy_detail, strategy_name = _reconcile_strategy(state)
+    chosen_api = strategy_detail.get("chosen_api") or ""
     structured_candidates = [
         *(recon_report.get("api_candidates") or []),
         *(recon_report.get("feed_candidates") or []),
@@ -720,21 +839,13 @@ def collect_evidence(state: SpiderForgeState) -> dict:
         recon_report.get("access_assessment")
         == "browser_required_http_blocked"
     )
-    browser_detail_available = recon_report.get("access_assessment") in {
-        "browser_public_ok",
-        "browser_required_http_blocked",
-    }
-    if is_public and browser_detail_available:
-        detail_samples = [
-            _fetch_browser_sample(url) for url in discovered_detail_urls
-        ]
-    elif is_public:
-        detail_samples = [
-            _fetch_sample(url, max_chars=20000)
-            for url in discovered_detail_urls
-        ]
-    else:
-        detail_samples = []
+    # verify_samples 節點已經抓過並驗證過就沿用（相容單獨呼叫與舊流程）。
+    # 用 in 而不是 or：驗完是空清單也代表「抓過了」，再抓一次只是白花一次網路。
+    detail_samples = (
+        list(state["detail_samples"])
+        if "detail_samples" in state
+        else fetch_detail_samples(state, discovered_detail_urls)
+    )
     usable_detail_samples = [
         sample for sample in detail_samples if _usable_detail_sample(sample)
     ]
@@ -765,14 +876,27 @@ def collect_evidence(state: SpiderForgeState) -> dict:
         "safe_response_headers": entry_http.get("safe_response_headers"),
         "title": recon_report.get("title"),
         "aria_snapshot": (recon_report.get("aria_snapshot") or "")[:3000],
+        # 不在這裡切到 2,500：那是按字元位置切的，而列表頁前面幾千字必然是
+        # <head> 與導覽（三個站實測，第一個文章連結分別在第 3,657／26,734／4,160 字），
+        # 切完模型看到的全是 <meta>，等於要它憑空猜列表 selector。
+        # 真正送進 prompt 的裁切交給 materials.compact_dom_html——它會用「已驗證的
+        # 文章網址」當錨點，裁出來的 2,200 字才會是文章連結所在的那一段。
         "html_excerpt": (
             entry_browser_html
             if browser_transport_required and entry_browser_html
             else str(entry_http.get("body_excerpt") or "")
-        )[:2500],
-        "link_samples": (
-            (recon_report.get("link_samples") or [])
-            + (entry_http.get("link_samples") or [])
+        )[:_PAGE_SAMPLE_CHARS],
+        # 符合文章樣式的連結排前面。取前 30 個是按 DOM 順序切的，而導覽必然排在
+        # 內文之前——三個站實測下來，模型收到的 30 個連結**沒有一個是文章**
+        # （中央社：立刻加入／隱私聲明；MoneyDJ：首頁／台股；經濟日報：會員中心／登出）。
+        # 要模型寫列表 selector，卻不給它看任何一個文章連結長什麼樣，是強人所難。
+        # 導覽仍保留在後面，因為「哪些不是文章」對排除規則同樣有用。
+        "link_samples": _article_links_first(
+            [
+                *(recon_report.get("link_samples") or []),
+                *(entry_http.get("link_samples") or []),
+            ],
+            state,
         )[:30],
     }
     network_candidates = [
@@ -864,7 +988,10 @@ def collect_evidence(state: SpiderForgeState) -> dict:
         "origin": "live_recon",
         "request": _prompt_safe_request(state),
         "entry_observation": entry_observation,
-        "strategy": state.get("strategy_detail"),
+        "strategy": strategy_detail,
+        # 偵查子迴圈實際驗證過的抓法。產碼要知道證據是用哪一種傳輸取得的——
+        # 用瀏覽器才看得到的連結，產出的爬蟲卻用純 HTTP 抓，等於白驗一場。
+        "fetch_strategy": state.get("fetch_strategy"),
         "api_sample": api_sample,
         "api_context_samples": api_context_samples,
         "discovered_detail_urls": discovered_detail_urls,
@@ -897,7 +1024,13 @@ def collect_evidence(state: SpiderForgeState) -> dict:
             for requirement, required in (
                 (
                     "browser_transport",
-                    recon_report.get("access_assessment")
+                    # 偵查子迴圈**實測驗證過**的抓法優先於 recon 的 access 判定：
+                    # BBC 的入口用純 HTTP 拿得到 200（access_assessment=browser_public_ok），
+                    # 但文章內文是前端渲染的，純 HTTP 只有幾十個字——子迴圈正是因此
+                    # 退到瀏覽器抓法才過關的。只看 access_assessment 的話，產出的爬蟲
+                    # 會被要求用純 HTTP 抓，等於把剛剛驗過的結論丟掉。
+                    uses_browser_transport(state.get("fetch_strategy"))
+                    or recon_report.get("access_assessment")
                     in {
                         "browser_required_http_blocked",
                         "browser_session_required",
@@ -921,7 +1054,12 @@ def collect_evidence(state: SpiderForgeState) -> dict:
             if present
         ],
     }
-    return {"evidence_pack": pack, "status": "evidence_ready"}
+    return {
+        "evidence_pack": pack,
+        "strategy": strategy_name,
+        "strategy_detail": strategy_detail,
+        "status": "evidence_ready",
+    }
 
 
 def _is_replayable_article_api(candidate: dict[str, Any]) -> bool:

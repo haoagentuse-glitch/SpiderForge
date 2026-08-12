@@ -312,7 +312,97 @@ def t_generated_code_is_persisted_before_the_gates_run():
     return ok and same, f"candidate_path={update.get('candidate_path')} 內容一致={same}"
 
 
+def t_fixture_replays_the_document_the_candidate_will_actually_get():
+    """重播用的文件要跟候選實際會拿到的同一種，否則是拿 A 的頁面測 B 的碼。
+
+    MoneyDJ 實測：偵查子迴圈驗過的是純 HTTP 的頁面連結、requirements 也沒有
+    browser_transport，產碼是照純 HTTP 的 HTML 寫的；但 fixture 不分青紅皂白優先用
+    瀏覽器的 dom_excerpt（只取 main 容器、還被消毒與截斷過），selector 當然找不到東西，
+    於是回報 insufficient_items 並歸成「selector 寫錯」——兩輪修復都在修一支沒問題的爬蟲。
+    """
+    from spider_forge.shared.fixture import _listing_fixture
+
+    base = {
+        "site_url": "https://example.com/news",
+        "recon_report": {
+            "final_url": "https://example.com/news",
+            "dom_excerpt": "<main>瀏覽器渲染後的 main</main>",
+            "http_entry_sample": {"body_excerpt": "<html>純 HTTP 的原始 HTML</html>"},
+        },
+    }
+    plain = _listing_fixture({
+        **base,
+        "evidence_pack": {"requirements": [],
+                          "entry_observation": {"html_excerpt": "<html>純 HTTP 的原始 HTML</html>"}},
+    })
+    browser = _listing_fixture({
+        **base,
+        "evidence_pack": {"requirements": ["browser_transport"],
+                          "entry_observation": {"html_excerpt": "<html>純 HTTP 的原始 HTML</html>"}},
+    })
+    return (
+        plain["capture_source"] == "entry_observation"
+        and "純 HTTP" in plain["body"]
+        and browser["capture_source"] == "browser_dom"
+        and "瀏覽器渲染" in browser["body"]
+    ), f"plain={plain['capture_source']} browser={browser['capture_source']}"
+
+
+def t_fixture_only_demands_details_the_listing_actually_links_to():
+    """離線重播不能要求候選對「列表頁上根本沒有的網址」產出 request。
+
+    BBC 實測：站台設定的兩個 sample_urls 是十天前的文章，今天的商業版沒有連到它們。
+    舊行為把 sample_urls 排在最前面又只取前兩份，於是 fixture 要求一件不可能的事——
+    任何正確的爬蟲都過不了，兩輪修復全部白花，最後還被歸成 selector 寫錯。
+    """
+    from spider_forge.shared.fixture import build_fixture_spec
+
+    listing_html = (
+        '<html><body><a href="/news/articles/on-page-1">一</a>'
+        '<a href="/news/articles/on-page-2">二</a></body></html>'
+    )
+    state = {
+        "site_url": "https://example.com/news",
+        "source_prefix": "example",
+        "site_name": "Example",
+        "strategy": "dom",
+        "target_schema": {"fields": {"title": {"required": True}}},
+        "validation": {"min_valid_items": 2},
+        "recon_report": {"dom_excerpt": listing_html, "final_url": "https://example.com/news"},
+        "evidence_pack": {
+            "dom_samples": [
+                # 使用者給的舊樣本排在最前面，但列表頁沒有連到它
+                {"requested_url": "https://example.com/news/articles/stale-from-last-week"},
+                {"requested_url": "https://example.com/news/articles/on-page-1"},
+                {"requested_url": "https://example.com/news/articles/on-page-2"},
+            ],
+        },
+    }
+    wanted = [
+        row["requested_url"] for row in build_fixture_spec(state)["detail_samples"]
+    ]
+
+    # 一份都連不到時仍照原樣送出：至少還能驗明細 callback 的抽取邏輯
+    unreachable = dict(state)
+    unreachable["evidence_pack"] = {
+        "dom_samples": [{"requested_url": "https://example.com/news/articles/nowhere"}]
+    }
+    fallback = [
+        row["requested_url"] for row in build_fixture_spec(unreachable)["detail_samples"]
+    ]
+
+    return (
+        wanted == [
+            "https://example.com/news/articles/on-page-1",
+            "https://example.com/news/articles/on-page-2",
+        ]
+        and fallback == ["https://example.com/news/articles/nowhere"]
+    ), f"wanted={wanted} fallback={fallback}"
+
+
 TESTS = [
+    t_fixture_replays_the_document_the_candidate_will_actually_get,
+    t_fixture_only_demands_details_the_listing_actually_links_to,
     t_material_compiler_removes_dom_noise_and_unselected_sources,
     t_fixture_runner_executes_candidate_in_subprocess,
     t_generated_code_is_persisted_before_the_gates_run,

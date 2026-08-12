@@ -27,12 +27,14 @@ from .strategy import StrategyDecision
 from .topic_gate import TopicGate
 from .triage import FeasibilityTriage
 from .validate import ValidateOutput
+from .verify_samples import VerifySamples
 
 __all__ = [
     "Node",
     "PrepareRequest",
     "Recon",
     "DiscoverArticleLinks",
+    "VerifySamples",
     "VerifyPagination",
     "FeasibilityTriage",
     "StrategyDecision",

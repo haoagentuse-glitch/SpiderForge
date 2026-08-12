@@ -28,6 +28,7 @@ import re
 from urllib.parse import urlparse
 
 from ..shared.evidence import _matches_validation_url
+from ..shared.fetch_strategies import API_RECORDS, api_record_count, link_pool
 from ..state import SpiderForgeState
 from .base import Node
 
@@ -78,10 +79,9 @@ class DiscoverArticleLinks(Node):
         }
         rows: list[dict] = []
         seen: set[str] = set()
-        for row in [
-            *(report.get("link_samples") or []),
-            *((report.get("http_entry_sample") or {}).get("link_samples") or []),
-        ]:
+        # 連結池由當前抓法決定（見 shared/fetch_strategies.py）：一次只看一種來源，
+        # 混在一起挑的話「換一種抓法重來」就沒有意義了。
+        for row in link_pool(state):
             url = str(row.get("url") or "")
             if url in seen:
                 continue
@@ -141,13 +141,24 @@ class DiscoverArticleLinks(Node):
         supplied = [str(u) for u in (state.get("sample_urls") or []) if u]
 
         if not rows:
-            # 使用者給了 sample_urls 就還有救；否則交給下游閘門與診斷處理。
+            # 前端資料介面的記錄自帶標題／時間／內容，本來就沒有明細頁連結可挑；
+            # 這種來源的「檢查一」要問的是有沒有文章記錄，不是挑不挑得到連結。
+            records = (
+                api_record_count(state)
+                if state.get("fetch_strategy") == API_RECORDS
+                else 0
+            )
             return {
                 "discovered_detail_urls": supplied[: self._limit],
                 "link_discovery": {
-                    "method": "none",
+                    "method": "api_records" if records else "none",
                     "candidates": 0,
-                    "reason": "硬性排除與 URL pattern 過濾後沒有候選連結",
+                    "api_records": records,
+                    "reason": (
+                        f"前端資料介面自帶 {records} 筆文章記錄，沒有明細頁連結可挑"
+                        if records
+                        else "硬性排除與 URL pattern 過濾後沒有候選連結"
+                    ),
                 },
             }
 

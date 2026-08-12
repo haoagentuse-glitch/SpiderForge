@@ -19,7 +19,7 @@ from spider_forge.clients.coder import drain_usage
 from spider_forge.config import SITE_QUEUE_PATH, run_dir
 from spider_forge.runs.ledger import append_run, summarize
 
-from .pipeline import build_pipeline
+from .pipeline import RECURSION_LIMIT, build_pipeline
 from .profiles import apply, resolve
 
 
@@ -34,7 +34,7 @@ def load_sites(
             "套件不內建站清單，請用環境變數 SPIDERFORGE_SITE_QUEUE 指向自己的 YAML"
             "（格式見 examples/site_queue.taiwan-finance.yaml）。"
         )
-    sites = yaml.safe_load(SITE_QUEUE_PATH.read_text(encoding="utf-8"))["sites"]
+    sites = yaml.safe_load(path.read_text(encoding="utf-8"))["sites"]
     if only:
         sites = [s for s in sites if s["source_prefix"] in only]
     return sites
@@ -67,7 +67,9 @@ def run_site(
     }  # retry_count/kimi_used 等內部欄位由 prepare_request 初始化（見 state.ForgeInput）
     tid = run_id or f"{site.get('source_prefix', 'site')}-{uuid.uuid4().hex[:8]}"
     init["run_id"] = tid  # 候選隔離區用同一 run_id
-    config = {"configurable": {"thread_id": tid}, "recursion_limit": 60}
+    # 步數上限跟 forge_spider 用同一個（算法見 pipeline.RECURSION_LIMIT），
+    # 兩邊各寫一個數字的話，批次會在單跑沒事的地方爆掉。
+    config = {"configurable": {"thread_id": tid}, "recursion_limit": RECURSION_LIMIT}
 
     t0 = time.time()
     for _event in graph.stream(init, config=config, stream_mode="updates"):

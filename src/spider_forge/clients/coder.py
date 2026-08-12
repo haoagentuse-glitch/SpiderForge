@@ -58,7 +58,11 @@ def complete(
     except LookupError as exc:
         raise CoderError(str(exc)) from exc
     temp = spec.default_temperature if temperature is None else temperature
-    default_max_tokens = "8000" if spec.name == "kimi" else "5000"
+    # Kimi 的 k2.7-code 會先出「思考」再出答案，而 **reasoning_tokens 也吃 max_tokens**：
+    # 實測（2026-08-12）叫它回一個「好」字就花掉 80 個 completion token，其中 77 個是思考。
+    # 原本 8000 的上限因此常常在還沒寫完程式碼時就被截斷——最後一輪修復幾乎必定
+    # 拿到 provider_failure，等於整個第二輪修復是死的。實測 16000／32000 都收。
+    default_max_tokens = "24000" if spec.name == "kimi" else "5000"
     max_tokens = int(
         os.getenv("SPIDERFORGE_MAX_COMPLETION_TOKENS", default_max_tokens)
     )
@@ -93,8 +97,14 @@ def complete(
                 choice = data["choices"][0]
                 span.set_attribute("llm.attempts", attempt + 1)
                 if choice.get("finish_reason") == "length":
+                    # 把思考 token 數一起講出來：截斷多半不是程式碼太長，而是思考吃掉了額度，
+                    # 少了這個數字只會讓人以為要改 prompt，實際上要調的是上限。
+                    reasoning = (usage.get("completion_tokens_details") or {}).get(
+                        "reasoning_tokens"
+                    )
                     raise CoderError(
                         f"{spec.name} 輸出達 {max_tokens} token 上限，拒收截斷程式碼"
+                        + (f"（其中思考 {reasoning} token）" if reasoning else "")
                     )
                 content = choice["message"]["content"]
                 span.record_output(content, usage)

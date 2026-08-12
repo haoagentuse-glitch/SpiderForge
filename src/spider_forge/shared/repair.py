@@ -194,7 +194,23 @@ def diagnose_failure(state: SpiderForgeState) -> dict:
         f"stdout：{test.get('stdout_tail', '')[-800:]}"
     )
     if result is None:
-        result = dict(judge(system=system, user=user, schema=DIAGNOSE_SCHEMA))
+        try:
+            result = dict(judge(system=system, user=user, schema=DIAGNOSE_SCHEMA))
+        except Exception as exc:  # noqa: BLE001 — 診斷模型不可用不該讓整場死掉
+            # 本機模型沒開時原本會直接拋例外，整個 run 連死信都不會留——最需要證據的
+            # 時候反而什麼都沒有。診斷的用途是「歸類 + 給修復方向」，模型不在就用
+            # 確定性訊號歸類，照樣進得了修復迴圈，只是少了那句自然語言的建議。
+            result = {
+                "failure_type": "unknown",
+                "evidence": {
+                    "exit_code": test.get("exit_code"),
+                    "item_count": test.get("item_count"),
+                    "stderr_tail": str(test.get("stderr_tail") or "")[-600:],
+                },
+                "suggested_fix": "診斷模型不可用；只依編譯後材料與上面的錯誤輸出修正。",
+                "error_signature": "diagnosis_unavailable",
+                "fallback_reason": str(exc)[:200],
+            }
         # 診斷模型不吐 failure_class；由確定性訊號補上路由用的可修復類別。
         result.setdefault("failure_class", _repairable_failure_class(error_text, result))
     else:

@@ -168,7 +168,7 @@ def t_validate_then_promote_integration():
     now = datetime.now(timezone.utc).isoformat()
     items = [
         {"title": f"整合測試第{i}則有效新聞", "url": f"https://example.com/article/{i}",
-         "content": "整合測試有效內容" * 10, "published_at": now}
+         "content": f"第{i}則整合測試有效內容" * 10, "published_at": now}
         for i in range(5)
     ]
     with open(output, "w", encoding="utf-8") as f:

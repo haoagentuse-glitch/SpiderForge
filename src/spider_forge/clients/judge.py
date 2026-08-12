@@ -61,6 +61,22 @@ def judge(
                 f"{OLLAMA_URL}/api/chat", json=payload, timeout=timeout_s
             )
             resp.raise_for_status()
+        except requests.HTTPError as e:
+            # Ollama 對「模型沒下載」也回 404，跟連不上長得一模一樣。分不出來的話，
+            # 看到「連線失敗」只會去查網路與容器，而真正要做的是 ollama pull。
+            detail = ""
+            if e.response is not None:
+                try:
+                    detail = str(e.response.json().get("error") or "")
+                except ValueError:
+                    detail = e.response.text[:200]
+            if "not found" in detail.lower():
+                raise JudgeError(
+                    f"Ollama 沒有這個模型：{payload['model']}"
+                    f"（{OLLAMA_URL}）——先 `ollama pull {payload['model']}`，"
+                    "或用 SPIDERFORGE_JUDGE_MODEL 指定已下載的模型"
+                ) from e
+            raise JudgeError(f"Ollama HTTP {e.response.status_code if e.response is not None else '?'}：{detail}") from e
         except requests.RequestException as e:
             raise JudgeError(f"Ollama 連線失敗（{OLLAMA_URL}）：{e}") from e
 

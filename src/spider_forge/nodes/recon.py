@@ -17,7 +17,9 @@ def _run_recon(state: SpiderForgeState, prober) -> dict:
     site_url = state["site_url"]
     http_sample = evidence_tools._fetch_sample(
         site_url,
-        max_chars=6000,
+        # 入口頁要留到「第一個文章連結」進得來為止：實測 MoneyDJ 的列表頁第一個
+        # 文章連結在第 26,734 字，原本 6,000 的上限連看都看不到（見 evidence.py 的表）。
+        max_chars=evidence_tools._PAGE_SAMPLE_CHARS,
         max_links=250,
         include_raw_body=True,
     )

@@ -76,6 +76,36 @@ def t_batch_cli_forwards_the_selected_profile():
     )
 
 
+def t_site_option_loads_the_given_queue_not_the_default():
+    """``--site`` 指到哪份 YAML 就讀哪份。
+
+    踩過的坑：``load_sites`` 用 ``queue_path`` 做存在性檢查，卻用預設的
+    ``SITE_QUEUE_PATH`` 讀檔——指定的清單被靜默忽略，跑的是別站。
+    其他 batch 測試把 ``load_sites`` 整個換掉，所以照不到這條路徑；
+    這裡必須真的落一份檔再讀回來。
+    """
+    import tempfile
+    from pathlib import Path
+
+    from pipelines.batch import load_sites
+
+    with tempfile.TemporaryDirectory() as workdir:
+        queue = Path(workdir) / "queue.yaml"
+        queue.write_text(
+            "sites:\n"
+            "  - source_prefix: only_in_this_file\n"
+            "    site_url: https://example.com/news\n",
+            encoding="utf-8",
+        )
+        sites = load_sites(queue_path=queue)
+        filtered = load_sites(["nothing_matches"], queue_path=queue)
+
+    prefixes = [site["source_prefix"] for site in sites]
+    return prefixes == ["only_in_this_file"] and filtered == [], (
+        f"prefixes={prefixes} filtered={filtered}"
+    )
+
+
 def t_finance_profile_enforces_the_topic_gate():
     """財經 profile 的實質差異就是主題閘門；通用 profile 不帶任何領域設定。"""
     from pipelines.profiles import apply, resolve
@@ -129,5 +159,6 @@ TESTS = [
     t_doctor_lists_every_provider_role,
     t_batch_cli_forwards_prefix_and_retry_budget,
     t_batch_cli_forwards_the_selected_profile,
+    t_site_option_loads_the_given_queue_not_the_default,
     t_finance_profile_enforces_the_topic_gate,
 ]

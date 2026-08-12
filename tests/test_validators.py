@@ -120,6 +120,42 @@ def t_duplicate_flood_rejected():
     return ok, f"pass={r['pass']} unique={r['unique_valid_count']} ratio={r['unique_ratio']}"
 
 
+def t_same_content_under_different_urls_rejected():
+    """網址各不相同、內文卻是同一塊——content selector 抓到全站共用區塊就長這樣。
+
+    只看網址去重完全擋不住：實測六筆內文一模一樣的 items，``unique_ratio`` 是 1.0，
+    整批漂亮過關。前期偵查的樣本驗證擋得住這件事，產出閘門原本擋不住。
+
+    兩種重複要分開量，不能把重複的內文判成無效——那樣「同 5 篇灌水 20 次」
+    會因為重複的都被剔除而讓比率變成 1.0，反而把原本擋得住的情況放過去
+    （見 t_duplicate_flood_rejected）。
+    """
+    now = datetime.now(_TW).isoformat()
+    same_block = "每一篇都抓到同一塊共用內容" * 20
+    items = [
+        {"title": f"第{i}則標題各不相同的新聞", "url": f"https://news.cnyes.com/news/id/{9300 + i}",
+         "content": same_block, "published_at": now}
+        for i in range(6)
+    ]
+    duplicated = validate_items(items, CNYES_CFG)
+    distinct = validate_items(
+        [{**row, "content": f"第{i}則自己的內文" * 20} for i, row in enumerate(items)],
+        CNYES_CFG,
+    )
+    return (
+        duplicated["pass"] is False
+        # 網址仍然各不相同，所以擋下它的只能是內文那條比率
+        and duplicated["unique_ratio"] == 1.0
+        and duplicated["unique_content_count"] == 1
+        and duplicated["content_unique_ratio"] < 0.8
+        and distinct["pass"] is True
+        and distinct["content_unique_ratio"] == 1.0
+    ), (
+        f"重複: pass={duplicated['pass']} url_ratio={duplicated['unique_ratio']} "
+        f"content_ratio={duplicated['content_unique_ratio']} / 正常: pass={distinct['pass']}"
+    )
+
+
 def t_soft_block_page_rejected():
     now = datetime.now(_TW).isoformat()
     items = [
@@ -179,7 +215,7 @@ def t_moneydj_query_ids_remain_unique():
     items = [
         {"title": f"MoneyDJ 第{i}則文章標題",
          "url": f"https://www.moneydj.com/kmdj/news/news-viewer.aspx?a=NEWS{i}",
-         "content": "MoneyDJ 有效文章內文" * 10, "published_at": now}
+         "content": f"MoneyDJ 第{i}則的獨立內文" * 10, "published_at": now}
         for i in range(5)
     ]
     r = validate_items(items, cfg)
@@ -200,7 +236,7 @@ def t_official_record_id_can_supply_identity():
         {
             "title": f"{1000 + i} 測試公司｜重大訊息公告",
             "url": lookup_url,
-            "content": "官方重大訊息完整說明內容" * 10,
+            "content": f"第 {i} 號官方重大訊息完整說明內容" * 10,
             "published_at": now,
             "source_record_id": f"mops:sii:1150726:{1000 + i}:1",
         }
@@ -244,6 +280,7 @@ TESTS = [
     t_naive_date_rejected,
     t_none_fields_rejected,
     t_duplicate_flood_rejected,
+    t_same_content_under_different_urls_rejected,
     t_soft_block_page_rejected,
     t_overlong_media_excerpt_rejected,
     t_query_cannot_masquerade_as_article_path,

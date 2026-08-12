@@ -25,6 +25,11 @@ SPIDER_CONTRACT = """【硬性契約】
    照常嘗試，但不要用假資料充數——抓不到就讓它自然失敗。
 3. class 屬性 source="{site_name}"、source_type="{source_type}"、
    content_scope="{content_scope}"。
+   **每一個 Request 都要明確寫 callback，而且被指名的 method 一定要存在**；
+   用 start_urls（不自寫 start_requests）時必須定義 `def parse(self, response)`。
+   實測最常見的產碼失敗就是這個：自訂了 parse_listing 卻沒有 parse，
+   Scrapy 對 start_urls 產生的 request 找不到預設 callback，
+   直接 NotImplementedError，整支爬蟲一筆都抓不到。
 4. 在同一檔案內定義 ArticleItem(scrapy.Item)，只 yield ArticleItem，不引用專案內其他模組。
    欄位契約如下；必填欄位取不到真值就跳過該筆，禁止以 title 或目前時間偽造：
 {field_contract}
@@ -35,9 +40,10 @@ SPIDER_CONTRACT = """【硬性契約】
    用 Scrapy HTTP/HTML，不得硬切 Playwright。
 7. 嚴格遵守 EvidencePack.request.validation 的 URL pattern、排除規則、時效與數量。
    Scrapy SelectorList 沒有 .first()；用 .get()、getall() 或索引。
-   只有 access_assessment 為 browser_required_http_blocked 或
-   browser_session_required 時，才可 import/use scrapy_playwright。
-   requirements 含 browser_transport 時，入口與明細的每一個必要 request 都必須
+   **requirements 含 browser_transport 時才用 scrapy_playwright，否則不要 import**——
+   判準是這一項，不是 access_assessment：入口用純 HTTP 拿得到 200，不代表內文不是
+   前端渲染的（EvidencePack.fetch_strategy 是前期偵查實際驗證過的抓法）。
+   含 browser_transport 時，入口與明細的每一個必要 request 都必須
    設 meta.playwright=True；禁止讓 start_urls 產生未啟用 Playwright 的入口 request。
    候選會由 scrapy runspider 獨立執行，不會載入 crawler runtime settings，因此必須
    在 custom_settings 自帶 scrapy-playwright 的 DOWNLOAD_HANDLERS 與 TWISTED_REACTOR。

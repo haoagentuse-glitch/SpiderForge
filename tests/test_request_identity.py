@@ -1,7 +1,7 @@
 """請求身分與反攻防硬界線。
 
 驗收重點：
-- 瀏覽器等級 UA + 相容 headers + X-Purpose 誠實痕跡（做的部分）。
+- 瀏覽器等級 UA + 相容 headers，而且**只有標準 header**（做的部分）。
 - recon 的 _fetch_sample 以瀏覽器身分抓取（§3.1 校準）。
 - 硬界線：只有單一固定 UA（非 UA 池），不做代理/指紋/CAPTCHA。
 
@@ -14,16 +14,23 @@ from __future__ import annotations
 from spider_forge.shared import request_identity
 from spider_forge.prompts.generate import SPIDER_CONTRACT
 
-def t_browser_headers_are_real_and_honest():
+def t_browser_headers_carry_no_custom_markers():
+    """只送標準瀏覽器 header——自訂 header 本身就是 CDN 的機器人特徵。
+
+    實測（2026-08-12）：帶著 ``X-Purpose`` 抓鉅亨網只回 70 個連結，不帶回 302 個。
+    它不在專案的兩條界線裡，卻讓偵查**安靜地**看到一個殘缺的網站——不會報錯，
+    只會讓後面每一關都在錯的素材上做判斷。誠實體現在低速與並發 1，不是這個字串。
+    """
     headers = request_identity.browser_request_headers()
+    custom = [name for name in headers if name.lower().startswith("x-")]
     ok = (
         "Chrome/" in headers["User-Agent"]
         and headers["User-Agent"].startswith("Mozilla/5.0")
-        and headers["X-Purpose"] == "academic course exercise, non-commercial"
         and headers["Accept-Language"].startswith("zh-TW")
         and "sec-ch-ua" in headers
+        and not custom
     )
-    return ok, f"ua={headers['User-Agent'][:40]}... x_purpose={headers.get('X-Purpose')}"
+    return ok, f"ua={headers['User-Agent'][:40]}... custom_headers={custom}"
 
 
 def t_single_fixed_ua_not_a_pool():
@@ -74,9 +81,10 @@ def t_fetch_sample_sends_browser_identity():
     sent = captured.get("headers", {})
     ok = (
         "Chrome/" in sent.get("User-Agent", "")
-        and sent.get("X-Purpose") == "academic course exercise, non-commercial"
+        and sent.get("Accept-Language", "").startswith("zh-TW")
+        and not [name for name in sent if name.lower().startswith("x-")]
     )
-    return ok, f"ua={sent.get('User-Agent', '')[:30]} x_purpose={sent.get('X-Purpose')}"
+    return ok, f"ua={sent.get('User-Agent', '')[:30]} headers={sorted(sent)}"
 
 
 def t_generator_contract_keeps_only_the_login_boundary():
@@ -106,7 +114,7 @@ def t_generator_contract_keeps_only_the_login_boundary():
 
 
 TESTS = [
-    t_browser_headers_are_real_and_honest,
+    t_browser_headers_carry_no_custom_markers,
     t_single_fixed_ua_not_a_pool,
     t_fetch_sample_sends_browser_identity,
     t_generator_contract_keeps_only_the_login_boundary,

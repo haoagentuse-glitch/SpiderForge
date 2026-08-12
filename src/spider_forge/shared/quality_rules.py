@@ -148,6 +148,12 @@ def validate_items(items: list[dict], cfg: dict | None = None) -> dict:
     per_item = []
     valid_identities = []
     rejected_samples = []
+    # 內文的指紋另外算一條比率，**不拿來判單筆有效與否**：判無效的話，
+    # 「同 5 篇重複 20 次」那種灌水會因為重複的都被剔除而讓剩下的比率變成 1.0，
+    # 反而把原本擋得住的情況放過去。兩種重複要分開量：
+    #   unique_ratio          不同的網址／有效筆數  → 擋灌水
+    #   content_unique_ratio  不同的內文／有效筆數  → 擋「每篇都抓到同一塊」
+    valid_contents: list[str] = []
 
     for index, it in enumerate(items):
         reasons = []
@@ -159,6 +165,7 @@ def validate_items(items: list[dict], cfg: dict | None = None) -> dict:
         ):
             if not ok:
                 reasons.append(reason)
+        fingerprint = " ".join(str(it.get("content") or "").split())
         identity_field = cfg.get("identity_field")
         if identity_field:
             identity = it.get(identity_field)
@@ -174,6 +181,7 @@ def validate_items(items: list[dict], cfg: dict | None = None) -> dict:
         per_item.append({"valid": valid, "reasons": reasons})
         if valid:
             valid_identities.append(identity)
+            valid_contents.append(fingerprint)
         elif len(rejected_samples) < 3:
             rejected_samples.append({
                 "index": index,
@@ -192,6 +200,10 @@ def validate_items(items: list[dict], cfg: dict | None = None) -> dict:
     valid_rate = (n_valid / n) if n else 0.0
     unique_rate = (n_unique / n_valid) if n_valid else 0.0
     min_unique_rate = cfg.get("min_unique_ratio", _UNIQUE_RATE_FLOOR)
+    # 網址各不相同、內文卻是同一塊 —— content selector 抓到全站共用區塊時就長這樣。
+    # 只看網址去重完全擋不住（實測：六筆內文一模一樣的 items，unique_ratio 是 1.0）。
+    n_unique_content = len(set(valid_contents))
+    content_unique_rate = (n_unique_content / n_valid) if n_valid else 0.0
 
     discovery_ok = n > 0
     retrieval_ok = any(_content_ok(it.get("content"), cfg)[0] for it in items)
@@ -200,6 +212,7 @@ def validate_items(items: list[dict], cfg: dict | None = None) -> dict:
         n_unique >= min_valid
         and valid_rate >= cfg.get("min_valid_ratio", _VALID_RATE_FLOOR)
         and unique_rate >= min_unique_rate
+        and content_unique_rate >= min_unique_rate
     )
     passed = discovery_ok and retrieval_ok and extraction_ok and quality_ok
 
@@ -217,8 +230,10 @@ def validate_items(items: list[dict], cfg: dict | None = None) -> dict:
             index for index, result in enumerate(per_item) if result["valid"]
         ],
         "unique_valid_count": n_unique,
+        "unique_content_count": n_unique_content,
         "valid_rate": round(valid_rate, 3),
         "unique_ratio": round(unique_rate, 3),
+        "content_unique_ratio": round(content_unique_rate, 3),
         "min_valid_items": min_valid,
         "min_unique_ratio": min_unique_rate,
         "reject_reasons": dict(Counter(r for p in per_item for r in p["reasons"])),

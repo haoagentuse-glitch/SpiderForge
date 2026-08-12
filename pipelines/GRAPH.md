@@ -45,7 +45,52 @@ Ollama 的失敗可補救，Gemini 的不行。**
 
 ---
 
-## 圖一：現況（2026-08-01，對應 commit `8af87da`）
+## 圖一：現況（2026-08-12：偵查子迴圈上線後）
+
+前期偵查已經是有界重試的子迴圈，圖二、圖三的提案都落地了。下面這張是實際跑的流程；
+更早的「一條直線」版本留在本節之後，因為那兩個缺陷的推理過程才是這個設計的理由。
+
+```mermaid
+flowchart TD
+    START([輸入 URL]) --> prepare
+
+    prepare["prepare_request"]:::prog
+    recon["recon<br/><small>雙軌探測，只跑一次</small>"]:::prog
+    triage{"feasibility_triage"}:::prog
+    strategy["strategy_decision<br/><small>判官不可用時退確定性起手式</small>"]:::mixed
+
+    prepare --> recon --> triage
+    triage -->|KILL_*| escalate
+    triage -->|FEASIBLE_*| strategy --> select
+
+    subgraph LOOP["前期偵查子迴圈（已實作）"]
+        direction TB
+        select["select_fetch_strategy<br/><small>由便宜到貴挑一種沒試過的抓法<br/>捲動那階選到才真的去捲</small>"]:::prog
+        c1{"discover_links<br/><small>檢查一：這一階的連結池挑得出文章嗎<br/>API 記錄自帶內容也算數</small>"}:::mixed
+        c2{"verify_samples<br/><small>檢查二：實際抓下來，是明細頁嗎<br/>標題／正文／發佈時間／兩篇不能雷同</small>"}:::prog
+        c3{"verify_pagination<br/><small>檢查三：翻頁真的翻得動嗎<br/>捲動看連結數成長；沒翻頁也算過</small>"}:::prog
+        select --> c1 --> c2 --> c3
+    end
+
+    c1 -->|挑不到| select
+    c2 -->|不是明細頁| select
+    c3 -->|"偵測到卻翻不動<br/>且還有沒試過的抓法"| select
+    select -->|"四種都試完"| escalate
+
+    c3 -->|三關全過| evidence["collect_evidence<br/><small>沿用驗過的樣本，不重抓<br/>把驗過的抓法寫進 requirements</small>"]:::prog
+    evidence --> generate["generate_spider"]:::paid
+    generate --> gates["五道閘門 → 診斷 → 修復迴圈<br/><small>（與下方原圖相同，未更動）</small>"]:::prog
+    gates --> persist(["persist_spider"]):::prog
+    gates --> escalate(["escalate_human<br/><small>死信記下四種抓法各卡在哪一關</small>"]):::prog
+
+    classDef prog fill:#dbeafe,stroke:#2563eb,color:#1e3a5f
+    classDef mixed fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef paid fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+```
+
+---
+
+## 圖一之前：一條直線的舊流程（2026-08-01，對應 commit `8af87da`）
 
 ```mermaid
 flowchart TD
@@ -352,7 +397,13 @@ flowchart TD
       偵測不等於可用：`?page=999` 被站方忽略時會回第 1 頁，HTTP 200 ✓、有文章連結 ✓，
       只有「第 2 頁的文章與第 1 頁比對」擋得住。cursor 型無法預先實抓，放行但標
       `verified=False`，不假裝驗證過。
-- [ ] ⑤ 明細樣本驗證 + 有界重試 —— 下一步
+- [x] **⑤ 明細樣本驗證（`verify_samples` 節點）** —— 抓下來實際看：有標題、正文夠長、
+      有文件層級發佈時間、兩篇不能雷同。判準跟門檻見 `shared/samples.py`。
+- [x] **抓法階梯與有界重試（`select_fetch_strategy` 節點）** —— 圖三、圖四的子迴圈落地。
+      一次只用一種抓法，三道檢查全過才往下放；不過就換下一種，四種都試完寫死信並
+      記下每一階卡在哪一關（`discovery_attempts`）。
+- [x] **捲動載入偵測（`browser.probe_scroll`）** —— 捲到底看連結數會不會增加。
+      是唯一「選到才探測」的一階：捲動要開瀏覽器等載入，不能為了排清單就每一站都先付這個成本。
 - [x] `run --site <yaml>` / `batch --site <yaml>` —— 不必再靠環境變數傳站台設定
 
 ### ③ 模型挑選的實測（2026-08-02，真實 Gemini 呼叫）
@@ -382,8 +433,131 @@ flowchart TD
 這組數字同時證明了兩件事：舊行為確實壞掉，而且**③ 取代不了 ②**——零設定時
 挑到的是體育新聞，要指定版面仍然只能靠 URL pattern。
 
+### ⑤ 檢查二要用什麼訊號（2026-08-12 實測，非推論）
+
+零設定跑 BBC 時挑到的是 `/news`、`/sport`、`/technology` 三個**不同的**分類頁——
+有標題、正文八千字以上、彼此也不相似，「兩篇不能雷同」完全擋不住。量了三種候選訊號：
+
+| 訊號 | 分類頁（4 個） | 文章（3 個） | 結論 |
+|---|---|---|---|
+| 正文長度 | 8.6k–10.3k | 5.7k–9.7k | 重疊，沒用 |
+| 每個連結的字數 | 39–63 | 32–52 | 重疊，沒用 |
+| 文件層級發佈時間 | **0 個** | **1 個** | **7/7 分得開** |
+
+瀏覽器抓法只拿得到 main 的 DOM（JSON-LD 在 `<head>` 會被切掉），但 `<time datetime>`
+在 main 裡面，實測 4/4 仍分得開，兩條抓取路徑都成立。
+
+這條不是湊出來的啟發式：`published_at` 是 `Article` 的必填欄位，樣本頁上根本沒有日期時，
+它就沒辦法教模型日期在哪裡。真的有站台的文章不帶結構化日期，用
+`validation.require_sample_date: false` 關掉。
+
+**另一條同樣重要**：抓了兩份以上卻只有一份合格時不放行。cnyes 實測三份裡兩份被擋，
+剩下那份也是分類頁，只是它剛好帶了每則新聞的 `<time>`，單獨看過得了關。
+
+### 捲動偵測的實測（2026-08-12）
+
+| 站 | 每輪連結數 | 判定 |
+|---|---|---|
+| 鉅亨網 `tw_stock_news` | 302 → 412 → 545 → 628 | **會無限捲動** |
+| BBC Business | 147 → 147 | 不會（分頁式） |
+| AP 商業 hub | 222 → 222 | 不會 |
+| Hacker News | 198 → 198 | 不會（分頁式） |
+
+踩到的坑：`probe()` 的取樣是 `slice(0, 400)`，新載入的連結接在清單尾端，
+前 400 個永遠是同一批導覽，於是「捲出更多」會被看成「什麼都沒發生」。捲動探測的
+取樣上限因此拉到 2000。
+
+### 拿掉 `X-Purpose` 誠實痕跡（2026-08-12）
+
+非標準 header 本身就是 CDN 的機器人特徵。實測鉅亨網：帶著它只回 **70** 個連結，
+不帶回 **302** 個，少掉七成七。它不在專案的兩條界線裡，卻讓偵查**安靜地**看到一個
+殘缺的網站——不會報錯，只會讓後面每一關都在錯的素材上做判斷。誠實體現在低速、
+並發 1、翻頁有上限這些真的減輕站方負擔的地方。
+
+### 偵查子迴圈上線後修掉的四個連帶問題
+
+實跑 BBC 全流程（recon → 產碼 → 五道閘門 → 修復）時一路撞出來的，都不是新功能本身的錯，
+但沒有它們的話新功能的結論送不到終點：
+
+1. **驗過的抓法沒有寫進產碼契約**。prompt 原本以 `access_assessment` 決定能不能用
+   Playwright，而 BBC 的入口用純 HTTP 拿得到 200——子迴圈明明已經驗出「內文是前端
+   渲染的、必須用瀏覽器」，產出的爬蟲卻被要求用純 HTTP，等於白驗一場。改成看
+   `requirements.browser_transport`，由**驗過的抓法**決定。
+2. **Kimi 的輸出上限太低**。k2.7-code 的「思考」也算 completion token：實測回一個「好」字
+   就花掉 80 個 completion token，其中 77 個是思考。8000 的上限常常在還沒寫完程式碼時
+   就被截斷，最後一輪修復幾乎必定拿到 `provider_failure`——第二輪修復其實是死的。
+   改成 24000（實測 16000／32000 都收）。
+3. **離線重播要求了不可能的事**。fixture 要求候選對每一份明細樣本產出 request，而
+   `sample_urls` 排在最前面又不保證出現在今天的列表頁上（BBC 站台設定裡的範例網址是
+   十天前的文章）。任何正確的爬蟲都過不了，兩輪修復全部白花，最後被歸成 selector 寫錯。
+   改成「列表頁真的連得到的優先」。
+4. **模型不可用會讓整場死掉**。`strategy_decision` 與 `diagnose_failure` 的判官呼叫都沒有
+   後備，本機 Ollama 沒開時直接拋例外穿出 graph——status=error、沒有死信、沒有診斷，
+   最需要證據的時候什麼都沒有。兩處都改成降級並把原因留在 state 裡
+   （沿用 `discover_links` 的 `fallback_reason` 慣例）。
+
+修完之後 BBC 全流程實跑：**24 篇、22 篇合格、去重後 22 篇、valid_rate 0.917，升版成功**。
+過程中第二輪診斷正好遇上 Ollama 沒開，靠第 4 點的降級才走完——`signatures` 留著
+`['fixture_gate_failed', 'diagnosis_unavailable']` 這條痕跡。
+
+### 三站逐節點實測揪出的七個問題（2026-08-12，中央社／MoneyDJ／經濟日報）
+
+第一輪不啟動整條 graph，一次跑一個節點看回傳合不合理。**七個問題全是同一種病**——
+**用字元位置切東西，而內容在哪裡跟字元位置沒有關係**：
+
+| # | 問題 | 實測數字 |
+|---|---|---|
+| 1 | 明細樣本截斷在正文之前 | 中央社明細頁 105,415 字，正文從 30,935 開始；上限 20,000 → 抽出 **39 字**，樣本驗證判「正文太短」 |
+| 2 | 瀏覽器抓不到 `<main>` 就回空白 | 中央社沒有 `main/[role=main]/#content`，等滿 30 秒逾時後回**空 DOM**；改成短逾時 + 退回 `body` → 1,154 字 |
+| 3 | 相似度在比版面不是比文章 | 三篇不同的中央社文章相似度 **0.79**（每頁約 600 組片語有 494 組是共有樣板），離判定門檻 0.9 只差一點；扣掉共有樣板後 0.21 |
+| 4 | 送進 prompt 的連結全是導覽 | 三站的 30 個連結樣本裡文章連結 **0 個**（立刻加入／首頁／會員中心…） |
+| 5 | 列表 HTML 片段全是 `<meta>` | 第一個文章連結分別在第 3,657／26,734／4,160 字，而入口只留 6,000 字再切成 2,500 |
+| 6 | 內文視窗落在頁首 | 以日期當錨點會錨到 `<head>`；MoneyDJ／經濟日報的七千字視窗裡只有 **77／84 字**是看得見的文字 |
+| 7 | 發佈時間被連同 `<script>` 丟掉 | 新聞站的 `datePublished` 多半只在 JSON-LD；經濟日報的 JSON-LD 有 5,423 字，日期在第 3,450 字 |
+
+修法一律是「裁切跟著內容走」：錨點改用**這一次真的驗證過的字串**（文章網址、發佈時間），
+找不到就退到「最長的一段純文字」（＝內文），JSON-LD 另外成一個欄位而不是靠視窗碰運氣。
+修完之後三站的證據包都有：文章連結、標題、1,290–1,392 字的內文、發佈時間。
+
+**證據夠不夠是看得出來的**：中央社產出的爬蟲直接改用 JSON-LD 的
+`articleBody`／`datePublished` 抽取——因為它終於在證據裡看得到那段 JSON-LD。
+
+### 第二輪（真的產碼）揪出的三個問題
+
+| # | 問題 | 怎麼發現的 |
+|---|---|---|
+| 8 | **離線重播拿錯文件** | MoneyDJ 驗過的是純 HTTP，`_listing_fixture` 卻一律優先用瀏覽器的 `dom_excerpt`（只取 main、消毒過、截斷過）→ selector 當然找不到東西 → 回報 `insufficient_items` 並歸成「selector 寫錯」。**兩輪修復都在修一支其實沒問題的爬蟲。** 改成依 `requirements` 選文件後，兩個原本死信的站直接變成功 |
+| 9 | **內文全部一樣也能過關** | 去重只看網址：六筆內文一模一樣的 items，`unique_ratio` 是 **1.0**。那正是 content selector 抓到全站共用區塊的樣子。改成網址與內文各算一條比率——**不能把重複內文判成無效**，否則「同 5 篇灌水 20 次」會因為重複的都被剔除而讓比率變 1.0，反而放過去 |
+| 10 | **產碼反覆漏掉 `parse`** | 三站裡兩站栽在 `NotImplementedError: XxxSpider.parse callback is not defined`。契約補一條「每個 Request 都要有 callback，用 start_urls 就必須定義 parse」之後，三站都只需要一輪修復（`llm_calls` 3 → 2） |
+
+三站最終結果（同一份設定、`--max-retries 2`）：
+
+| 站 | 結果 | 筆數 | 合格 | 去重 | 修復輪數 |
+|---|---|---|---|---|---|
+| 中央社財經 | success | 24 | 24 | 24 | 1 |
+| MoneyDJ | success | 20 | 20 | 20 | 1 |
+| 經濟日報 | success | 21 | 20 | 20 | 1 |
+
+### 失敗證據體檢（注入已知缺陷，不呼叫模型）
+
+| 注入的缺陷 | 證據講的話 | 準不準 |
+|---|---|---|
+| `parse` callback 改名 | `callback_errors: ["parse:Traceback…"]` + `missing_detail_request` | ✅ 指名到 callback |
+| 抽取欄位名寫錯 | `insufficient_items:0<2` | ⚠️ 說得出「抽不到」，說不出「哪個欄位」——爬蟲自己把不完整的筆數丟掉了，重播看不到 |
+| `published_at` 沒時區 | `reject_reasons: {date_naive_no_tz: 6}` | ✅ 精準 |
+| 抓到列表頁當文章 | `reject_reasons: {url_excluded_pattern: 6}` | ✅ 精準 |
+| 六篇內文一模一樣 | 修好第 9 項之後才擋得住 | ✅（原本整批過關） |
+
+### 步數上限（加節點就要重算）
+
+撞破 LangGraph 的 `recursion_limit` 拿到的是 `GraphRecursionError`——不是死信、沒有診斷。
+偵查子迴圈上線後最壞路徑是 61 步，而當時的上限正好是 60，差一步。現在算法寫在
+`pipeline.RECURSION_LIMIT`（100），並由 `tests/test_discovery_loop.py` 釘住。
+
 ## 變更記錄
 
+- 2026-08-12：前期偵查子迴圈上線（⑤ 樣本驗證 + 抓法階梯 + 捲動偵測），
+  並修掉上述四個連帶問題與 `--site` 被忽略的 bug。測試 170 → 210。
 - 2026-08-02（下午）：換新 API key 後實測 Gemini 挑選 5/5 完美；limit 2→3 讓模型
   在 sample_urls 之外仍有名額。前一把 key 是被排程任務在早上 6:00 用完的。
 - 2026-08-02：使用者提供 Gemini Free Tier 實際額度（RPM 15–30／RPD 1,000–1,500），

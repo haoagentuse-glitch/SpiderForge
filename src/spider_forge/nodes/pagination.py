@@ -15,6 +15,9 @@
    前兩條都會過，只有這條擋得住
 
 全部候選都失敗就誠實降級成 ``none_detected``（只抓第 1 頁），不臆造。
+
+捲動抓法是唯一的例外：它的「翻頁」是無限捲動，證據在選這一階時就已經量到了
+（捲到底幾次、每次各有幾個連結），不必也無法用第 2 頁的 URL 去驗。
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ from ..shared.evidence import (
     _PAGINATION_PARAMS,
     _matches_validation_url,
 )
+from ..shared.fetch_strategies import BROWSER_SCROLL_LINKS
 from ..state import SpiderForgeState
 from .base import Node
 
@@ -125,6 +129,30 @@ class VerifyPagination(Node):
         entry_http = report.get("http_entry_sample") or {}
         entry_url = str(report.get("final_url") or state.get("site_url") or "")
 
+        # 走捲動抓法時，「翻頁」就是無限捲動本身：連結數有沒有隨著捲動增加，
+        # 選這一階時已經實際捲過並量到了（見 nodes/fetch_strategy.py），
+        # 不需要再實抓第 2 頁——這一階能被選上，前提就是它捲得出更多。
+        if state.get("fetch_strategy") == BROWSER_SCROLL_LINKS:
+            scroll = report.get("scroll_probe") or {}
+            counts = scroll.get("links_after_each_round") or []
+            return {
+                "pagination": {
+                    "type": "infinite_scroll",
+                    "verified": bool(scroll.get("loaded_more")),
+                    "rounds_scrolled": scroll.get("rounds_scrolled"),
+                    "links_after_each_round": counts,
+                    "note": (
+                        "無限捲動：捲到底會載入更多文章，"
+                        f"實測每輪連結數 {counts}；遵守 constraints.max_pages 當作捲動輪數上限。"
+                    ),
+                },
+                "pagination_probe": {
+                    "candidates": 1,
+                    "verified": bool(scroll.get("loaded_more")),
+                    "attempts": [{"type": "infinite_scroll", "result": f"連結數 {counts}"}],
+                },
+            }
+
         candidates = _pagination_candidates(
             chosen_api=str((state.get("strategy_detail") or {}).get("chosen_api") or ""),
             entry_url=entry_url,
@@ -165,7 +193,12 @@ class VerifyPagination(Node):
                 return {
                     "pagination": {**candidate, "verified": False},
                     "pagination_probe": {"candidates": len(candidates),
-                                         "verified": False, "attempts": attempts,
+                                         "verified": False,
+                                         # 沒驗過，但訊號本身是確定性的（body 真的有游標鍵）。
+                                         # 少了這一欄，偵查子迴圈會把它當成「翻頁壞掉」而換掉
+                                         # 一個其實可用的抓法。
+                                         "deterministic": True,
+                                         "attempts": attempts,
                                          "reason": "cursor 型無法預先實抓，訊號本身確定性"},
                 }
             try:
